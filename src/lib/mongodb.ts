@@ -37,7 +37,11 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
       .connect(MONGODB_URI, {
         bufferCommands: false,
       })
-      .then((mg) => mg);
+      .then((mg) => mg)
+      .catch((err) => {
+        cached.promise = null;
+        throw err;
+      });
   }
 
   cached.conn = await cached.promise;

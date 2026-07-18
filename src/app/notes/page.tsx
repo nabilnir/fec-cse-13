@@ -35,6 +35,8 @@ import {
   Trash2,
   LogOut,
   LogIn,
+  Shield,
+  ShieldX,
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import {
@@ -56,7 +58,7 @@ interface DocFile {
   subject: string;
   department: "CSE" | "EEE" | "Civil" | "Mechanical";
   year: "1st Year" | "2nd Year" | "3rd Year" | "4th Year";
-  type: "Notes" | "Questions";
+  type: "Notes" | "Questions" | "Hand Note" | "Others Campus Note";
   uploadedBy: string;
   uploadDate: string;
   driveId: string; // Google Drive File ID
@@ -210,6 +212,16 @@ export default function NotesDashboard() {
   const [authName, setAuthName] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Authorization gate for Contribute Notes
+  const [isAuthCheckOpen, setIsAuthCheckOpen] = useState(false);
+  const [authCheckDenied, setAuthCheckDenied] = useState(false);
+
+  // Helper: open the authorization gate dialog
+  const openContributeGate = () => {
+    setAuthCheckDenied(false);
+    setIsAuthCheckOpen(true);
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -236,7 +248,13 @@ export default function NotesDashboard() {
       setAuthName("");
     } catch (err: any) {
       console.error(err);
-      setAuthError(err.message || "An authentication error occurred");
+      if (err.code === "auth/operation-not-allowed") {
+        setAuthError("Email/Password authentication is disabled. Please enable it in the Firebase Console.");
+      } else if (err.code === "auth/invalid-credential") {
+        setAuthError("Invalid email or password. Please try again.");
+      } else {
+        setAuthError(err.message || "An authentication error occurred");
+      }
     }
   };
 
@@ -257,7 +275,7 @@ export default function NotesDashboard() {
   const [newFileSubject, setNewFileSubject] = useState("");
   const [newFileDept, setNewFileDept] = useState<"CSE" | "EEE" | "Civil" | "Mechanical">("CSE");
   const [newFileYear, setNewFileYear] = useState<"1st Year" | "2nd Year" | "3rd Year" | "4th Year">("2nd Year");
-  const [newFileType, setNewFileType] = useState<"Notes" | "Questions">("Notes");
+  const [newFileType, setNewFileType] = useState<"Notes" | "Questions" | "Hand Note" | "Others Campus Note">("Notes");
   const [newFileDriveId, setNewFileDriveId] = useState("");
   const [newFileUploader, setNewFileUploader] = useState("Rebecca McDonald");
   const [isSubmitSuccess, setIsSubmitSuccess] = useState(false);
@@ -622,7 +640,7 @@ export default function NotesDashboard() {
             {[
               { id: "dashboard", label: "Dashboard", icon: Grid },
               { id: "calendar", label: "Calendar", icon: BookOpen },
-              { id: "courses", label: "Courses", icon: Layers },
+              { id: "courses", label: "Topics", icon: Layers },
               { id: "settings", label: "Settings", icon: Settings },
             ].map((item) => {
               const Icon = item.icon;
@@ -837,18 +855,15 @@ export default function NotesDashboard() {
                     {/* Year groups */}
                     <div className="flex flex-col gap-3">
                       {[
-                        { year: "1st Year", color: "blue",   semesters: ["1st Semester", "2nd Semester"] },
-                        { year: "2nd Year", color: "amber",  semesters: ["3rd Semester", "4th Semester"] },
-                        { year: "3rd Year", color: "emerald",semesters: ["5th Semester", "6th Semester"] },
-                        { year: "4th Year", color: "rose",   semesters: ["7th Semester", "8th Semester"] },
+                        { year: "1st Year", color: "teal", semesters: ["1st Semester", "2nd Semester"] },
+                        { year: "2nd Year", color: "teal", semesters: ["3rd Semester", "4th Semester"] },
+                        { year: "3rd Year", color: "teal", semesters: ["5th Semester", "6th Semester"] },
+                        { year: "4th Year", color: "teal", semesters: ["7th Semester", "8th Semester"] },
                       ].map(({ year, color, semesters }, yIdx) => {
                         const colorMap: Record<string, { badge: string; btn: string; activebtn: string }> = {
-                          blue:    { badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",    btn: "border-blue-100 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20",    activebtn: "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 ring-2 ring-blue-300/50" },
-                          amber:   { badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",  btn: "border-amber-100 hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20",  activebtn: "border-amber-500 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 ring-2 ring-amber-300/50" },
-                          emerald: { badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300", btn: "border-emerald-100 hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20", activebtn: "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-300/50" },
-                          rose:    { badge: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",    btn: "border-rose-100 hover:border-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20",    activebtn: "border-rose-500 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 ring-2 ring-rose-300/50" },
+                          teal: { badge: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300", btn: "border-teal-100 hover:border-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20", activebtn: "border-teal-500 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 ring-2 ring-teal-300/50" },
                         };
-                        const styles = colorMap[color];
+                        const styles = colorMap[color] || colorMap.teal;
                         return (
                           <div key={yIdx} className="flex flex-col gap-1.5">
                             <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full w-fit ${styles.badge}`}>
@@ -901,7 +916,7 @@ export default function NotesDashboard() {
                               onClick={() => setActiveTab("courses")}
                               className="text-[10px] font-bold text-accent whitespace-nowrap hover:text-primary transition-colors"
                             >
-                              Courses →
+                              Topics →
                             </button>
                             <button
                               onClick={() => { setSelectedYear(selectedSemester!.startsWith("1st") ? "1st Year" : selectedSemester!.startsWith("2nd") ? "2nd Year" : selectedSemester!.startsWith("3rd") ? "3rd Year" : "4th Year"); setActiveTab("files"); }}
@@ -919,7 +934,7 @@ export default function NotesDashboard() {
                   <div className="lg:col-span-5 bg-white dark:bg-[#0b1d1a] p-6 rounded-3xl border border-border shadow-sm flex flex-col gap-4">
                     <div className="flex items-center justify-between border-b border-border pb-3">
                       <div>
-                        <h3 className="font-serif font-bold text-sm text-primary dark:text-teal-200">Courses</h3>
+                        <h3 className="font-serif font-bold text-sm text-primary dark:text-teal-200">Topics</h3>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
                           {selectedSemester ? selectedSemester : "Select a semester to view courses"}
                         </p>
@@ -979,50 +994,80 @@ export default function NotesDashboard() {
                     )}
                   </div>
 
-                  {/* Card: Quick Access (Folders and files lists) */}
+                  {/* Card: Recently Added (Folders and files lists) */}
                   <div className="lg:col-span-3 bg-white dark:bg-[#0b1d1a] p-6 rounded-3xl border border-border shadow-sm flex flex-col gap-6">
                     <div className="flex items-center justify-between border-b border-border pb-3">
-                      <h3 className="font-serif font-bold text-sm text-primary dark:text-teal-200">Quick Access</h3>
+                      <h3 className="font-serif font-bold text-sm text-primary dark:text-teal-200">Recently Added</h3>
                       <button
-                        onClick={() => setActiveTab("files")}
-                        className="text-[10px] font-bold text-accent uppercase tracking-wide"
+                        onClick={() => {
+                          setSelectedFolder(null);
+                          setSelectedCourse("All");
+                          setSelectedType("All");
+                          setActiveCourseFilter(null);
+                          setSearchQuery("");
+                          setActiveTab("files");
+                        }}
+                        className="text-[10px] font-bold text-accent uppercase tracking-wide cursor-pointer hover:underline"
                       >
                         All Files
                       </button>
                     </div>
 
-                    {/* Section: Pinned */}
+                    {/* Section: Recent Files */}
                     <div className="flex flex-col gap-3">
                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                        PINNED
+                        Recent Files
                       </span>
 
-                      {[
-                        "Maslow's Pyramid Essay Outline",
-                        "Maslow's Pyramid Essay Draft 1",
-                        "Maslow's Pyramid Essay Draft 2",
-                      ].map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-xl transition-colors">
-                          <FileText className="w-4 h-4 text-blue-500 shrink-0" />
-                          <span className="text-xs font-semibold text-primary truncate dark:text-teal-250">
-                            {item}
-                          </span>
+                      {files.slice(0, 3).map((file) => (
+                        <div
+                          key={file.id}
+                          onClick={() => setPreviewFile(file)}
+                          className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-xl transition-colors cursor-pointer group"
+                        >
+                          <FileText className="w-4 h-4 text-blue-500 shrink-0 group-hover:scale-110 transition-transform" />
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="text-xs font-semibold text-primary truncate dark:text-teal-250 group-hover:text-accent transition-colors">
+                              {file.title}
+                            </span>
+                            <span className="text-[9px] text-muted-foreground truncate">
+                              Uploaded by {file.uploadedBy} • {file.size}
+                            </span>
+                          </div>
                         </div>
                       ))}
                     </div>
 
-                    {/* Section: Folders */}
+                    {/* Section: Recent Folders */}
                     <div className="flex flex-col gap-3 mt-2">
                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                        FOLDERS
+                        Recent Folders
                       </span>
 
-                      <div className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-xl transition-colors">
-                        <Folder className="w-4 h-4 text-amber-500 shrink-0" />
-                        <span className="text-xs font-semibold text-primary truncate dark:text-teal-250">
-                          Maslow's Pyramid Essay Draft 3
-                        </span>
-                      </div>
+                      {folders.slice(0, 3).map((folder) => (
+                        <div
+                          key={folder.id}
+                          onClick={() => {
+                            setSelectedFolder(folder.name);
+                            setSelectedCourse("All");
+                            setSelectedType("All");
+                            setActiveCourseFilter(null);
+                            setSearchQuery("");
+                            setActiveTab("files");
+                          }}
+                          className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-xl transition-colors cursor-pointer group"
+                        >
+                          <Folder className="w-4 h-4 text-amber-500 shrink-0 group-hover:scale-110 transition-transform" />
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="text-xs font-semibold text-primary truncate dark:text-teal-250 group-hover:text-accent transition-colors">
+                              {folder.name}
+                            </span>
+                            <span className="text-[9px] text-muted-foreground">
+                              {folder.filesCount} Files • {folder.year}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
@@ -1080,15 +1125,7 @@ export default function NotesDashboard() {
 
                   {/* Plus CTA Contribute Button */}
                   <Button
-                    onClick={() => {
-                      if (currentUser) {
-                        setIsContributeOpen(true);
-                      } else {
-                        setAuthMode("signin");
-                        setAuthError("Please sign in to contribute learning resources.");
-                        setIsAuthOpen(true);
-                      }
-                    }}
+                    onClick={openContributeGate}
                     className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold shadow-md hover:-translate-y-0.5 transition-all gap-2 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
@@ -1105,7 +1142,7 @@ export default function NotesDashboard() {
                       </div>
                       <div className="flex flex-col">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-accent">
-                          Course Filter Active
+                          Topic Filter Active
                         </span>
                         <span className="text-xs font-semibold text-primary dark:text-teal-200">
                           <span className="font-mono text-[10px] bg-accent/15 px-1.5 py-0.5 rounded text-accent mr-2">{activeCourseFilter.code}</span>
@@ -1119,7 +1156,7 @@ export default function NotesDashboard() {
                         className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground hover:text-primary transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
                         <ArrowLeft className="w-3 h-3" />
-                        Back to My Courses
+                        Back to My Topics
                       </button>
                       <button
                         onClick={() => setActiveCourseFilter(null)}
@@ -1133,46 +1170,7 @@ export default function NotesDashboard() {
 
                 {/* Filter Toolbar Section */}
                 {!selectedFolder && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4 bg-white dark:bg-[#0b1d1a] p-4 rounded-2xl border border-border shadow-sm text-xs">
-                    {/* Filter Course */}
-                    <div className="flex flex-col gap-1.5">
-                      <span className="font-bold text-muted-foreground uppercase text-[9px] tracking-wider">Course</span>
-                      <div className="relative">
-                        <select
-                          value={selectedCourse}
-                          onChange={(e) => setSelectedCourse(e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-border rounded-lg p-2 font-semibold text-primary dark:text-teal-200 appearance-none cursor-pointer pr-8"
-                        >
-                          <option value="All">All Courses</option>
-                          {Array.from(new Set(folders.map((f) => f.name))).map((courseName) => (
-                            <option key={courseName} value={courseName}>
-                              {courseName}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="w-4 h-4 text-muted-foreground absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      </div>
-                    </div>
-
-                    {/* Filter Year */}
-                    <div className="flex flex-col gap-1.5">
-                      <span className="font-bold text-muted-foreground uppercase text-[9px] tracking-wider">Year / Semester</span>
-                      <div className="relative">
-                        <select
-                          value={selectedYear}
-                          onChange={(e) => setSelectedYear(e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-border rounded-lg p-2 font-semibold text-primary dark:text-teal-200 appearance-none cursor-pointer pr-8"
-                        >
-                          <option value="All">All Years</option>
-                          <option value="1st Year">1st Year (Sem 1-2)</option>
-                          <option value="2nd Year">2nd Year (Sem 3-4)</option>
-                          <option value="3rd Year">3rd Year (Sem 5-6)</option>
-                          <option value="4th Year">4th Year (Sem 7-8)</option>
-                        </select>
-                        <ChevronDown className="w-4 h-4 text-muted-foreground absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      </div>
-                    </div>
-
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white dark:bg-[#0b1d1a] p-4 rounded-2xl border border-border shadow-sm text-xs">
                     {/* Filter Type */}
                     <div className="flex flex-col gap-1.5">
                       <span className="font-bold text-muted-foreground uppercase text-[9px] tracking-wider">Resource Type</span>
@@ -1182,9 +1180,11 @@ export default function NotesDashboard() {
                           onChange={(e) => setSelectedType(e.target.value)}
                           className="w-full bg-slate-50 dark:bg-slate-900 border border-border rounded-lg p-2 font-semibold text-primary dark:text-teal-200 appearance-none cursor-pointer pr-8"
                         >
-                          <option value="All">All Types (Notes & Qs)</option>
+                          <option value="All">All Types (Notes, Qs & More)</option>
                           <option value="Notes">Lecture Notes</option>
                           <option value="Questions">Question Papers</option>
+                          <option value="Hand Note">Hand Notes</option>
+                          <option value="Others Campus Note">Others Campus Notes</option>
                         </select>
                         <ChevronDown className="w-4 h-4 text-muted-foreground absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                       </div>
@@ -1201,7 +1201,7 @@ export default function NotesDashboard() {
                             setSelectedType("All");
                             setActiveCourseFilter(null);
                           }}
-                          className="text-accent font-bold hover:text-primary p-2 h-9 text-xs"
+                          className="text-accent font-bold hover:text-primary p-2 h-9 text-xs w-fit"
                         >
                           Clear Active Filters
                         </Button>
@@ -1272,15 +1272,7 @@ export default function NotesDashboard() {
                       <FileText className="w-8 h-8 text-muted-foreground animate-pulse" />
                       <span className="text-xs font-semibold text-muted-foreground">No notes or questions found.</span>
                       <Button
-                        onClick={() => {
-                          if (currentUser) {
-                            setIsContributeOpen(true);
-                          } else {
-                            setAuthMode("signin");
-                            setAuthError("Please sign in to contribute learning resources.");
-                            setIsAuthOpen(true);
-                          }
-                        }}
+                        onClick={openContributeGate}
                         size="sm"
                         variant="outline"
                         className="text-accent border-accent hover:bg-accent/15 cursor-pointer"
@@ -1420,7 +1412,7 @@ export default function NotesDashboard() {
                 {/* Header */}
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="font-serif text-3xl font-extrabold text-primary dark:text-teal-100">My Courses</h2>
+                    <h2 className="font-serif text-3xl font-extrabold text-primary dark:text-teal-100">My Topics</h2>
                     <p className="text-xs text-muted-foreground mt-1">
                       {selectedSemester ? `Showing courses for ${selectedSemester}` : "Select a semester on the dashboard to filter courses"}
                     </p>
@@ -1489,7 +1481,7 @@ export default function NotesDashboard() {
                   <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-slate-50 dark:bg-slate-900/40 border-b border-border text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
                     <span className="col-span-1">#</span>
                     <span className="col-span-2">Code</span>
-                    <span className="col-span-4">Course Title</span>
+                    <span className="col-span-4">Topic Title</span>
                     <span className="col-span-2">Dept</span>
                     <span className="col-span-2">Credits</span>
                     <span className="col-span-1">Notes</span>
@@ -1696,6 +1688,88 @@ export default function NotesDashboard() {
       </Dialog>
 
       {/* ================= MODAL: AUTHENTICATION (SIGN IN / SIGN UP) ================= */}
+      {/* ================= MODAL: AUTHORIZATION GATE ================= */}
+      <Dialog open={isAuthCheckOpen} onOpenChange={(open) => { setIsAuthCheckOpen(open); if (!open) setAuthCheckDenied(false); }}>
+        <DialogContent className="max-w-sm bg-white dark:bg-[#0b1d1a] border border-border p-0 rounded-3xl overflow-hidden">
+
+          {/* Top accent bar */}
+          <div className="h-1.5 w-full bg-gradient-to-r from-accent via-teal-400 to-accent/60" />
+
+          <div className="p-7 flex flex-col items-center text-center gap-5">
+            {!authCheckDenied ? (
+              <>
+                {/* Icon */}
+                <div className="w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center">
+                  <Shield className="w-8 h-8 text-accent" />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <h2 className="font-serif text-xl font-extrabold text-primary dark:text-teal-100">
+                    Are You Authorized?
+                  </h2>
+                  <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
+                    Only authorized personnel can upload notes and study resources to the MY FEC portal.
+                  </p>
+                </div>
+
+                <div className="flex gap-3 w-full mt-1">
+                  {/* No button */}
+                  <button
+                    onClick={() => setAuthCheckDenied(true)}
+                    className="flex-1 py-2.5 rounded-xl border-2 border-border font-bold text-sm text-muted-foreground hover:border-rose-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer"
+                  >
+                    No
+                  </button>
+
+                  {/* Yes button */}
+                  <button
+                    onClick={() => {
+                      setIsAuthCheckOpen(false);
+                      setAuthCheckDenied(false);
+                      if (currentUser) {
+                        setIsContributeOpen(true);
+                      } else {
+                        setAuthMode("signin");
+                        setAuthError(null);
+                        setIsAuthOpen(true);
+                      }
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-accent hover:bg-accent/90 font-bold text-sm text-accent-foreground shadow-md hover:shadow-accent/30 transition-all cursor-pointer"
+                  >
+                    Yes
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* Denied message */
+              <>
+                <div className="w-16 h-16 rounded-2xl bg-rose-100 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex items-center justify-center">
+                  <ShieldX className="w-8 h-8 text-rose-500" />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <h3 className="font-serif text-lg font-bold text-primary dark:text-teal-100">
+                    Access Restricted
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Contact Authorized personnel to contribute notes with{" "}
+                    <span className="font-bold text-accent">MY FEC</span>
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => { setIsAuthCheckOpen(false); setAuthCheckDenied(false); }}
+                  className="w-full py-2.5 rounded-xl border border-border font-bold text-xs text-muted-foreground hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors cursor-pointer mt-1"
+                >
+                  Close
+                </button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ================= MODAL: AUTH (Sign In / Sign Up) ================= */}
       <Dialog open={isAuthOpen} onOpenChange={setIsAuthOpen}>
         <DialogContent className="max-w-md bg-white dark:bg-[#0b1d1a] border border-border p-6 rounded-3xl">
           <DialogHeader className="gap-1 pb-2 border-b border-border/50">
@@ -1869,6 +1943,8 @@ export default function NotesDashboard() {
                   >
                     <option value="Notes">Notes</option>
                     <option value="Questions">Question Paper</option>
+                    <option value="Hand Note">Hand Note</option>
+                    <option value="Others Campus Note">Others Campus Note</option>
                   </select>
                 </div>
 

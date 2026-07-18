@@ -71,7 +71,7 @@ export default function LandingPage() {
   const heroOpacity = useTransform(scrollYProgress, [0, 1], [1, 0]);
 
   return (
-    <div className="relative min-h-screen bg-background text-foreground overflow-x-hidden selection:bg-accent selection:text-accent-foreground">
+    <div className="relative min-h-screen bg-background text-foreground selection:bg-accent selection:text-accent-foreground">
       {/* --- Sticky Glassmorphic Navbar --- */}
       <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md transition-all duration-300">
         <div className="container mx-auto px-4 md:px-8 h-20 flex items-center justify-between">
@@ -243,7 +243,7 @@ export default function LandingPage() {
               </Button>
             </Link>
             <Link href="/notes">
-              <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10 backdrop-blur-sm">
+              <Button size="lg" variant="outline" className="bg-transparent border-white/30 text-white hover:bg-white/10 hover:text-white backdrop-blur-sm">
                 Get Student Notes
               </Button>
             </Link>
@@ -609,7 +609,7 @@ export default function LandingPage() {
               </Button>
             </Link>
             <Link href="/notes">
-              <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10">
+              <Button size="lg" variant="outline" className="bg-transparent border-white/30 text-white hover:bg-white/10 hover:text-white">
                 Explore Notes Portal
               </Button>
             </Link>
