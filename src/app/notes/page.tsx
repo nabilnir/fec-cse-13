@@ -75,98 +75,89 @@ interface DocFolder {
   filesCount: number;
 }
 
-// Initial Database matching the prompt constraints
-const initialFolders: DocFolder[] = [
-  { id: "f-1", name: "PSY. Midterm", department: "CSE", year: "2nd Year", color: "blue", filesCount: 14 },
-  { id: "f-2", name: "Creative Writing Essay Inspo.", department: "Mechanical", year: "3rd Year", color: "yellow", filesCount: 34 },
-  { id: "f-3", name: "IND Group Project Folder", department: "Civil", year: "3rd Year", color: "grey", filesCount: 4 },
-  { id: "f-4", name: "Class Notes for CRT", department: "EEE", year: "2nd Year", color: "red", filesCount: 22 },
-  { id: "f-5", name: "Data Structures & Algorithms", department: "CSE", year: "2nd Year", color: "blue", filesCount: 8 },
-  { id: "f-6", name: "Thermodynamics & Heat Transfer", department: "Mechanical", year: "2nd Year", color: "green", filesCount: 12 },
-  { id: "f-7", name: "Basic Electrical Eng. Slides", department: "EEE", year: "1st Year", color: "yellow", filesCount: 6 },
-  { id: "f-8", name: "Structural Mechanics Lab", department: "Civil", year: "2nd Year", color: "red", filesCount: 5 },
+// Default seed data for MongoDB
+const defaultFolders = [
+  { name: "PSY. Midterm", department: "CSE", year: "2nd Year", color: "blue" },
+  { name: "Creative Writing Essay Inspo.", department: "Mechanical", year: "3rd Year", color: "yellow" },
+  { name: "IND Group Project Folder", department: "Civil", year: "3rd Year", color: "grey" },
+  { name: "Class Notes for CRT", department: "EEE", year: "2nd Year", color: "red" },
+  { name: "Data Structures & Algorithms", department: "CSE", year: "2nd Year", color: "blue" },
+  { name: "Thermodynamics & Heat Transfer", department: "Mechanical", year: "2nd Year", color: "green" },
+  { name: "Basic Electrical Eng. Slides", department: "EEE", year: "1st Year", color: "yellow" },
+  { name: "Structural Mechanics Lab", department: "Civil", year: "2nd Year", color: "red" },
 ];
 
-const initialFiles: DocFile[] = [
+const defaultFiles = [
   {
-    id: "file-1",
     title: "Week 5 CRT notes - Computer Networks Intro",
     subject: "Class Notes for CRT",
     department: "EEE",
     year: "2nd Year",
     type: "Notes",
     uploadedBy: "Prof. Sarah Jenkins",
-    uploadDate: "2026-06-12",
     driveId: "1-W6vC5wR_0LzJv9q-123456789abcde",
     color: "red",
     size: "2.4 MB",
   },
   {
-    id: "file-2",
     title: "PHI Midterm Essay - Logic & Reason",
     subject: "PSY. Midterm",
     department: "CSE",
     year: "2nd Year",
     type: "Questions",
     uploadedBy: "Rebecca McDonald (Student)",
-    uploadDate: "2026-06-18",
     driveId: "1_2H3K4L5M6N7O8P9Q0R_STUVWXYZabc",
     color: "blue",
     size: "1.1 MB",
   },
   {
-    id: "file-3",
     title: "Week 4 CRT notes - Routing Protocols",
     subject: "Class Notes for CRT",
     department: "EEE",
     year: "2nd Year",
     type: "Notes",
     uploadedBy: "Prof. Sarah Jenkins",
-    uploadDate: "2026-06-05",
     driveId: "1A_b2C3d4E5f6G7h8I9j0K1l2M3n4O5p",
     color: "red",
     size: "3.2 MB",
   },
   {
-    id: "file-4",
     title: "Data Structures - Trees & Binary Search Week 5",
     subject: "Data Structures & Algorithms",
     department: "CSE",
     year: "2nd Year",
     type: "Notes",
     uploadedBy: "Dr. Alan Turing",
-    uploadDate: "2026-06-20",
     driveId: "1z9y8x7w6v5u4t3s2r1q0pONMLKJIHGFE",
     color: "blue",
     size: "4.8 MB",
   },
   {
-    id: "file-5",
     title: "Thermodynamics - Solved Midterm Papers 2024",
     subject: "Thermodynamics & Heat Transfer",
     department: "Mechanical",
     year: "2nd Year",
     type: "Questions",
     uploadedBy: "Prof. Richard Feynman",
-    uploadDate: "2026-05-14",
     driveId: "1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q",
     color: "green",
     size: "8.5 MB",
   },
   {
-    id: "file-6",
     title: "Soil Mechanics - Foundation Design Notes",
     subject: "IND Group Project Folder",
     department: "Civil",
     year: "3rd Year",
     type: "Notes",
     uploadedBy: "Prof. Karl Terzaghi",
-    uploadDate: "2026-06-01",
     driveId: "1c2d3e4f5g6h7i8j9k0l1m2n3o4p5q6r",
     color: "grey",
     size: "6.1 MB",
   },
 ];
+
+const initialFolders: DocFolder[] = [];
+const initialFiles: DocFile[] = [];
 
 // Helper to determine text colors based on design tokens
 const getBadgeStyles = (color: string) => {
@@ -198,6 +189,7 @@ export default function NotesDashboard() {
   const [selectedCourse, setSelectedCourse] = useState<string>("All");
   const [selectedYear, setSelectedYear] = useState<string>("All");
   const [selectedType, setSelectedType] = useState<string>("All");
+  const [sortBy, setSortBy] = useState<string>("date-newest");
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   // Tracks the course whose Files button was clicked from the Courses tab
   const [activeCourseFilter, setActiveCourseFilter] = useState<{ code: string; title: string } | null>(null);
@@ -283,10 +275,11 @@ export default function NotesDashboard() {
   // Semester Selection State
   const [selectedSemester, setSelectedSemester] = useState<string | null>(null);
 
-  // Semester API State
-  interface SemesterCourse { code: string; title: string; department: string; creditHours: number; instructor?: string; }
-  interface SemesterDoc { label: string; year: string; semNumber: number; courses: SemesterCourse[]; }
+  // Semester & Course API State
+  interface SemesterCourse { code: string; title: string; department: string; creditHours: number; instructor?: string; semesterLabel?: string; }
+  interface SemesterDoc { label: string; year: string; semNumber: number; }
   const [dbSemesters, setDbSemesters] = useState<SemesterDoc[]>([]);
+  const [dbCourses, setDbCourses] = useState<SemesterCourse[]>([]);
 
   // Add Semester Modal State
   const [isAddSemesterOpen, setIsAddSemesterOpen] = useState(false);
@@ -299,12 +292,77 @@ export default function NotesDashboard() {
   const [addSemLoading, setAddSemLoading] = useState(false);
   const [addSemSuccess, setAddSemSuccess] = useState(false);
 
-  // Fetch all semesters from DB on mount
+  // Add Folder Modal State
+  const [isAddFolderOpen, setIsAddFolderOpen] = useState(false);
+  const [addFolderLabel, setAddFolderLabel] = useState("");
+  const [addFolderDept, setAddFolderDept] = useState<"CSE" | "EEE" | "Civil" | "Mechanical">("CSE");
+  const [addFolderYear, setAddFolderYear] = useState<"1st Year" | "2nd Year" | "3rd Year" | "4th Year">("2nd Year");
+  const [addFolderColor, setAddFolderColor] = useState<"blue" | "yellow" | "grey" | "red" | "green">("blue");
+  const [addFolderLoading, setAddFolderLoading] = useState(false);
+  const [addFolderSuccess, setAddFolderSuccess] = useState(false);
+
+  const handleAddFolder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addFolderLabel) return;
+    setAddFolderLoading(true);
+    try {
+      const res = await fetch("/api/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: addFolderLabel,
+          department: addFolderDept,
+          year: addFolderYear,
+          color: addFolderColor,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+
+      setFolders((prev) => {
+        const existingIdx = prev.findIndex((f) => f.name.toLowerCase() === addFolderLabel.toLowerCase().trim());
+        if (existingIdx >= 0) {
+          const copy = [...prev];
+          copy[existingIdx] = json.data;
+          return copy;
+        }
+        return [...prev, json.data];
+      });
+
+      setAddFolderSuccess(true);
+      setTimeout(() => {
+        setAddFolderSuccess(false);
+        setIsAddFolderOpen(false);
+        setAddFolderLabel("");
+        setAddFolderDept("CSE");
+        setAddFolderYear("2nd Year");
+        setAddFolderColor("blue");
+      }, 1500);
+    } catch (err) {
+      console.error("Failed to add folder:", err);
+    } finally {
+      setAddFolderLoading(false);
+    }
+  };
+
+  // Fetch all semesters, courses, folders, and files from DB on mount
   useEffect(() => {
     fetch("/api/semesters")
       .then((r) => r.json())
       .then((json) => { if (json.success) setDbSemesters(json.data); })
-      .catch(() => {}); // silently fail if DB not configured yet
+      .catch(() => {});
+    fetch("/api/courses")
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setDbCourses(json.data); })
+      .catch(() => {});
+    fetch("/api/folders")
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setFolders(json.data); })
+      .catch(() => {});
+    fetch("/api/files")
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setFiles(json.data); })
+      .catch(() => {});
   }, []);
 
   // Courses to show: from DB if found, else fallback static
@@ -417,28 +475,59 @@ export default function NotesDashboard() {
         { label: "4th Year 8th Semester", year: "4th Year", semNumber: 8 },
       ];
 
+      // 1. Sync semesters (without courses)
       for (const sem of semestersToSync) {
-        const courses = staticCoursesBySemester[sem.label] || [];
         await fetch("/api/semesters", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            label: sem.label,
-            year: sem.year,
-            semNumber: sem.semNumber,
-            courses,
-          }),
+          body: JSON.stringify({ label: sem.label, year: sem.year, semNumber: sem.semNumber }),
         });
       }
 
-      // Re-fetch from DB
-      const res = await fetch("/api/semesters");
-      const json = await res.json();
-      if (json.success) {
-        setDbSemesters(json.data);
-        setSyncSuccess(true);
-        setTimeout(() => setSyncSuccess(false), 3000);
+      // 2. Sync courses to the standalone /api/courses endpoint
+      for (const sem of semestersToSync) {
+        const courses = staticCoursesBySemester[sem.label] || [];
+        for (const course of courses) {
+          await fetch("/api/courses", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...course, semesterLabel: sem.label }),
+          });
+        }
       }
+
+      // 3. Sync default folders
+      for (const folder of defaultFolders) {
+        await fetch("/api/folders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(folder),
+        });
+      }
+
+      // 4. Sync default files
+      for (const file of defaultFiles) {
+        await fetch("/api/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(file),
+        });
+      }
+
+      // 5. Re-fetch semesters, courses, folders, and files from DB
+      const [semRes, courseRes, foldersRes, filesRes] = await Promise.all([
+        fetch("/api/semesters").then((r) => r.json()),
+        fetch("/api/courses").then((r) => r.json()),
+        fetch("/api/folders").then((r) => r.json()),
+        fetch("/api/files").then((r) => r.json()),
+      ]);
+      if (semRes.success) setDbSemesters(semRes.data);
+      if (courseRes.success) setDbCourses(courseRes.data);
+      if (foldersRes.success) setFolders(foldersRes.data);
+      if (filesRes.success) setFiles(filesRes.data);
+
+      setSyncSuccess(true);
+      setTimeout(() => setSyncSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to sync syllabus data:", err);
     } finally {
@@ -446,44 +535,60 @@ export default function NotesDashboard() {
     }
   };
 
+  // activeSemesterCourses: prefer DB courses filtered by semesterLabel, fallback to static
   const activeSemesterCourses: SemesterCourse[] = selectedSemester
-    ? (dbSemesters.find((s) => s.label === selectedSemester)?.courses ?? staticCoursesBySemester[selectedSemester] ?? [])
+    ? (() => {
+        const fromDb = dbCourses.filter((c) => c.semesterLabel === selectedSemester);
+        return fromDb.length > 0 ? fromDb : (staticCoursesBySemester[selectedSemester] ?? []);
+      })()
     : [];
 
-  // Handler: save new semester to DB
+  // Handler: save new semester and its courses to DB
   const handleAddSemester = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addSemLabel || !addSemYear || !addSemNumber) return;
     setAddSemLoading(true);
     try {
-      const res = await fetch("/api/semesters", {
+      // 1. Save the semester
+      const semRes = await fetch("/api/semesters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: addSemLabel,
-          year: addSemYear,
-          semNumber: addSemNumber,
-          courses: addSemCourses.filter((c) => c.code && c.title),
-        }),
+        body: JSON.stringify({ label: addSemLabel, year: addSemYear, semNumber: addSemNumber }),
       });
-      const json = await res.json();
-      if (json.success) {
-        setDbSemesters((prev) => {
-          const existing = prev.findIndex((s) => s.label === json.data.label);
-          if (existing >= 0) { const n = [...prev]; n[existing] = json.data; return n; }
-          return [...prev, json.data];
+      const semJson = await semRes.json();
+      if (!semJson.success) throw new Error(semJson.error);
+
+      // 2. Save each course to the standalone /api/courses endpoint
+      const validCourses = addSemCourses.filter((c) => c.code && c.title);
+      for (const course of validCourses) {
+        await fetch("/api/courses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...course, semesterLabel: addSemLabel }),
         });
-        setAddSemSuccess(true);
-        setTimeout(() => { setAddSemSuccess(false); setIsAddSemesterOpen(false); }, 1500);
       }
+
+      // 3. Update local state: add semester + new courses
+      setDbSemesters((prev) => {
+        const existing = prev.findIndex((s) => s.label === semJson.data.label);
+        if (existing >= 0) { const n = [...prev]; n[existing] = semJson.data; return n; }
+        return [...prev, semJson.data];
+      });
+      setDbCourses((prev) => {
+        const others = prev.filter((c) => c.semesterLabel !== addSemLabel);
+        return [...others, ...validCourses.map((c) => ({ ...c, semesterLabel: addSemLabel }))];
+      });
+
+      setAddSemSuccess(true);
+      setTimeout(() => { setAddSemSuccess(false); setIsAddSemesterOpen(false); }, 1500);
     } catch { /* silently fail */ }
     finally { setAddSemLoading(false); }
   };
 
   // Contribute Form submission
-  const handleContributeSubmit = (e: React.FormEvent) => {
+  const handleContributeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newFileTitle || !newFileDriveId) return;
+    if (!newFileTitle || !newFileDriveId || !newFileSubject) return;
 
     // Clean Google Drive URL to get ID if they pasted a full link
     let extractedId = newFileDriveId.trim();
@@ -501,57 +606,50 @@ export default function NotesDashboard() {
       Mechanical: "green",
     };
 
-    const newDoc: DocFile = {
-      id: `file-${Date.now()}`,
-      title: newFileTitle,
-      subject: newFileSubject || "General Reference",
-      department: newFileDept,
-      year: newFileYear,
-      type: newFileType,
-      uploadedBy: currentUser
-        ? (currentUser.displayName || currentUser.email || "Anonymous Student")
-        : (newFileUploader || "Anonymous Student"),
-      uploadDate: new Date().toISOString().split("T")[0],
-      driveId: extractedId,
-      color: colorMap[newFileDept] || "grey",
-      size: `${(Math.random() * 5 + 1).toFixed(1)} MB`,
-    };
+    const targetColor = colorMap[newFileDept] || "grey";
+    const fileSize = `${(Math.random() * 5 + 1).toFixed(1)} MB`;
 
-    // Update state lists
-    setFiles([newDoc, ...files]);
+    try {
+      const res = await fetch("/api/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newFileTitle,
+          subject: newFileSubject,
+          department: newFileDept,
+          year: newFileYear,
+          type: newFileType,
+          uploadedBy: currentUser
+            ? (currentUser.displayName || currentUser.email || "Anonymous Student")
+            : (newFileUploader || "Anonymous Student"),
+          driveId: extractedId,
+          color: targetColor,
+          size: fileSize,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
 
-    // Check if folder exists, if not maybe add filesCount to a corresponding folder
-    const folderExists = folders.some((f) => f.name.toLowerCase() === newFileSubject.toLowerCase());
-    if (folderExists) {
-      setFolders(
-        folders.map((f) =>
-          f.name.toLowerCase() === newFileSubject.toLowerCase()
-            ? { ...f, filesCount: f.filesCount + 1 }
-            : f
-        )
-      );
-    } else {
-      // Create new folder dynamically
-      const newFolder: DocFolder = {
-        id: `f-${Date.now()}`,
-        name: newFileSubject || "Class Notes for CRT",
-        department: newFileDept,
-        year: newFileYear,
-        color: colorMap[newFileDept] || "blue",
-        filesCount: 1,
-      };
-      setFolders([...folders, newFolder]);
+      // Re-fetch folders & files to sync up local state with DB
+      const [foldersRes, filesRes] = await Promise.all([
+        fetch("/api/folders").then((r) => r.json()),
+        fetch("/api/files").then((r) => r.json()),
+      ]);
+      if (foldersRes.success) setFolders(foldersRes.data);
+      if (filesRes.success) setFiles(filesRes.data);
+
+      setIsSubmitSuccess(true);
+      setTimeout(() => {
+        setIsSubmitSuccess(false);
+        setIsContributeOpen(false);
+        // Reset form fields
+        setNewFileTitle("");
+        setNewFileSubject("");
+        setNewFileDriveId("");
+      }, 1500);
+    } catch (err) {
+      console.error("Failed to submit resource:", err);
     }
-
-    setIsSubmitSuccess(true);
-    setTimeout(() => {
-      setIsSubmitSuccess(false);
-      setIsContributeOpen(false);
-      // Reset form fields
-      setNewFileTitle("");
-      setNewFileSubject("");
-      setNewFileDriveId("");
-    }, 1500);
   };
 
   // Filter Logic
@@ -585,13 +683,35 @@ export default function NotesDashboard() {
       return matchCourse && matchYear && matchType && matchFolder && matchSearch && matchActiveCourse;
     });
 
-    // When a course filter is active, sort by title alphabetically
-    if (activeCourseFilter) {
-      result = result.sort((a, b) => a.title.localeCompare(b.title));
-    }
+    // Sorting logic
+    result = [...result].sort((a, b) => {
+      if (sortBy === "type") {
+        const typeOrder: Record<string, number> = {
+          "Notes": 1,
+          "Hand Note": 2,
+          "Questions": 3,
+          "Others Campus Note": 4
+        };
+        const orderA = typeOrder[a.type] || 99;
+        const orderB = typeOrder[b.type] || 99;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.title.localeCompare(b.title);
+      }
+      if (sortBy === "title-asc") {
+        return a.title.localeCompare(b.title);
+      }
+      if (sortBy === "title-desc") {
+        return b.title.localeCompare(a.title);
+      }
+      if (sortBy === "date-oldest") {
+        return new Date(a.uploadDate).getTime() - new Date(b.uploadDate).getTime();
+      }
+      // default: date-newest
+      return new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime();
+    });
 
     return result;
-  }, [files, selectedCourse, selectedYear, selectedType, selectedFolder, searchQuery, activeCourseFilter]);
+  }, [files, selectedCourse, selectedYear, selectedType, selectedFolder, searchQuery, activeCourseFilter, sortBy]);
 
   return (
     <div className="flex h-screen bg-[#f3f5f6] text-foreground font-sans overflow-hidden dark:bg-[#071412] dark:text-teal-50">
@@ -1123,14 +1243,25 @@ export default function NotesDashboard() {
                     </p>
                   </div>
 
-                  {/* Plus CTA Contribute Button */}
-                  <Button
-                    onClick={openContributeGate}
-                    className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold shadow-md hover:-translate-y-0.5 transition-all gap-2 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Contribute Notes
-                  </Button>
+                  {/* Plus CTA Contribute & Create Folder Buttons */}
+                  <div className="flex items-center gap-3">
+                    {currentUser && (
+                      <Button
+                        onClick={() => setIsAddFolderOpen(true)}
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-md hover:-translate-y-0.5 transition-all gap-2 cursor-pointer border border-accent/20 h-10 px-4 text-xs rounded-xl flex items-center justify-center"
+                      >
+                        <Folder className="w-4 h-4 text-amber-500" />
+                        Create Folder
+                      </Button>
+                    )}
+                    <Button
+                      onClick={openContributeGate}
+                      className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold shadow-md hover:-translate-y-0.5 transition-all gap-2 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Contribute Notes
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Course Filter Breadcrumb Banner */}
@@ -1169,46 +1300,64 @@ export default function NotesDashboard() {
                 )}
 
                 {/* Filter Toolbar Section */}
-                {!selectedFolder && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white dark:bg-[#0b1d1a] p-4 rounded-2xl border border-border shadow-sm text-xs">
-                    {/* Filter Type */}
-                    <div className="flex flex-col gap-1.5">
-                      <span className="font-bold text-muted-foreground uppercase text-[9px] tracking-wider">Resource Type</span>
-                      <div className="relative">
-                        <select
-                          value={selectedType}
-                          onChange={(e) => setSelectedType(e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-border rounded-lg p-2 font-semibold text-primary dark:text-teal-200 appearance-none cursor-pointer pr-8"
-                        >
-                          <option value="All">All Types (Notes, Qs & More)</option>
-                          <option value="Notes">Lecture Notes</option>
-                          <option value="Questions">Question Papers</option>
-                          <option value="Hand Note">Hand Notes</option>
-                          <option value="Others Campus Note">Others Campus Notes</option>
-                        </select>
-                        <ChevronDown className="w-4 h-4 text-muted-foreground absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      </div>
-                    </div>
-
-                    {/* Search count / Clear Filters */}
-                    <div className="flex flex-col justify-end">
-                      {(selectedCourse !== "All" || selectedYear !== "All" || selectedType !== "All" || activeCourseFilter) && (
-                        <Button
-                          variant="ghost"
-                          onClick={() => {
-                            setSelectedCourse("All");
-                            setSelectedYear("All");
-                            setSelectedType("All");
-                            setActiveCourseFilter(null);
-                          }}
-                          className="text-accent font-bold hover:text-primary p-2 h-9 text-xs w-fit"
-                        >
-                          Clear Active Filters
-                        </Button>
-                      )}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-white dark:bg-[#0b1d1a] p-4 rounded-2xl border border-border shadow-sm text-xs">
+                  {/* Filter Type */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="font-bold text-muted-foreground uppercase text-[9px] tracking-wider">Resource Type</span>
+                    <div className="relative">
+                      <select
+                        value={selectedType}
+                        onChange={(e) => setSelectedType(e.target.value)}
+                        className="w-full bg-slate-50 dark:bg-slate-900 border border-border rounded-lg p-2 font-semibold text-primary dark:text-teal-200 appearance-none cursor-pointer pr-8"
+                      >
+                        <option value="All">All Types (Notes, Qs & More)</option>
+                        <option value="Notes">Lecture Notes</option>
+                        <option value="Questions">Question Papers</option>
+                        <option value="Hand Note">Hand Notes</option>
+                        <option value="Others Campus Note">Others Campus Notes</option>
+                      </select>
+                      <ChevronDown className="w-4 h-4 text-muted-foreground absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                     </div>
                   </div>
-                )}
+
+                  {/* Sort By Option */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="font-bold text-muted-foreground uppercase text-[9px] tracking-wider">Sort By</span>
+                    <div className="relative">
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="w-full bg-slate-50 dark:bg-slate-900 border border-border rounded-lg p-2 font-semibold text-primary dark:text-teal-200 appearance-none cursor-pointer pr-8"
+                      >
+                        <option value="date-newest">Date Uploaded (Newest)</option>
+                        <option value="date-oldest">Date Uploaded (Oldest)</option>
+                        <option value="type">Resource Type (Notes first)</option>
+                        <option value="title-asc">Title (A-Z)</option>
+                        <option value="title-desc">Title (Z-A)</option>
+                      </select>
+                      <ChevronDown className="w-4 h-4 text-muted-foreground absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Search count / Clear Filters */}
+                  <div className="flex flex-col justify-end">
+                    {(selectedCourse !== "All" || selectedYear !== "All" || selectedType !== "All" || activeCourseFilter || sortBy !== "date-newest") && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setSelectedCourse("All");
+                          setSelectedYear("All");
+                          setSelectedType("All");
+                          setActiveCourseFilter(null);
+                          setSortBy("date-newest");
+                        }}
+                        className="text-accent font-bold hover:text-primary p-2 h-9 text-xs w-fit"
+                      >
+                        Clear Active Filters & Sort
+                      </Button>
+                    )}
+                  </div>
+                </div>
 
                 {/* --- FOLDER SECTION (Render only when not inside a folder) --- */}
                 {!selectedFolder && (
@@ -1889,16 +2038,37 @@ export default function NotesDashboard() {
                 />
               </div>
 
-              {/* Field: Subject/Folder */}
+              {/* Field: Subject/Folder Selection */}
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Subject / Folder Name</label>
-                <Input
-                  required
-                  placeholder="e.g. PSY. Midterm or Class Notes for CRT"
-                  value={newFileSubject}
-                  onChange={(e) => setNewFileSubject(e.target.value)}
-                  className="h-10 text-xs border-border rounded-xl"
-                />
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Subject / Folder</label>
+                {folders.length === 0 ? (
+                  <div className="text-xs text-muted-foreground bg-slate-50 dark:bg-slate-900 border border-border rounded-xl p-3">
+                    No folders exist. Please create a folder first as an authorized admin.
+                  </div>
+                ) : (
+                  <select
+                    required
+                    value={newFileSubject}
+                    onChange={(e) => {
+                      const selectedName = e.target.value;
+                      setNewFileSubject(selectedName);
+                      // Match department, year, and color from the folder if it exists
+                      const folder = folders.find((f) => f.name === selectedName);
+                      if (folder) {
+                        setNewFileDept(folder.department);
+                        setNewFileYear(folder.year);
+                      }
+                    }}
+                    className="bg-slate-50 dark:bg-slate-900 border border-border rounded-xl p-2.5 font-semibold text-xs text-primary dark:text-teal-200 cursor-pointer h-10"
+                  >
+                    <option value="">— Select a folder —</option>
+                    {folders.map((f) => (
+                      <option key={f.id} value={f.name}>
+                        {f.name} ({f.department} · {f.year})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Grid: Dept & Year */}
@@ -2155,6 +2325,113 @@ export default function NotesDashboard() {
                       <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…
                     </span>
                   ) : "Save to Database"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Add Folder Dialog ─────────────────────────────────────── */}
+      <Dialog open={isAddFolderOpen} onOpenChange={(open) => { setIsAddFolderOpen(open); if (!open) setAddFolderSuccess(false); }}>
+        <DialogContent className="max-w-md bg-white dark:bg-[#0b1d1a] border border-border p-6 rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl font-bold text-primary dark:text-teal-100">
+              {addFolderSuccess ? "Saved!" : "Create Academic Folder"}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Save a new folder/subject with classification details directly to the database.
+            </DialogDescription>
+          </DialogHeader>
+
+          {addFolderSuccess ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-4 text-center">
+              <div className="w-16 h-16 rounded-full bg-accent/20 flex items-center justify-center animate-bounce">
+                <Check className="w-8 h-8 text-accent" />
+              </div>
+              <p className="text-sm font-bold text-primary dark:text-teal-200">Folder saved to database!</p>
+              <p className="text-xs text-muted-foreground">You can now associate documents with this folder.</p>
+            </div>
+          ) : (
+            <form onSubmit={handleAddFolder} className="flex flex-col gap-4 mt-2">
+              {/* Folder Name */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Folder / Subject Name</label>
+                <Input
+                  required
+                  placeholder="e.g. PSY. Midterm or Class Notes for CRT"
+                  value={addFolderLabel}
+                  onChange={(e) => setAddFolderLabel(e.target.value)}
+                  className="h-10 text-xs border-border rounded-xl"
+                />
+              </div>
+
+              {/* Dept & Year */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Department</label>
+                  <select
+                    value={addFolderDept}
+                    onChange={(e) => setAddFolderDept(e.target.value as any)}
+                    className="bg-slate-50 dark:bg-slate-900 border border-border rounded-xl p-2.5 font-semibold text-xs text-primary dark:text-teal-200 cursor-pointer h-10"
+                  >
+                    <option value="CSE">CSE</option>
+                    <option value="EEE">EEE</option>
+                    <option value="Civil">Civil</option>
+                    <option value="Mechanical">Mechanical</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Year</label>
+                  <select
+                    value={addFolderYear}
+                    onChange={(e) => setAddFolderYear(e.target.value as any)}
+                    className="bg-slate-50 dark:bg-slate-900 border border-border rounded-xl p-2.5 font-semibold text-xs text-primary dark:text-teal-200 cursor-pointer h-10"
+                  >
+                    <option value="1st Year">1st Year</option>
+                    <option value="2nd Year">2nd Year</option>
+                    <option value="3rd Year">3rd Year</option>
+                    <option value="4th Year">4th Year</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Color Selection */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Accent Color</label>
+                <select
+                  value={addFolderColor}
+                  onChange={(e) => setAddFolderColor(e.target.value as any)}
+                  className="bg-slate-50 dark:bg-slate-900 border border-border rounded-xl p-2.5 font-semibold text-xs text-primary dark:text-teal-200 cursor-pointer h-10"
+                >
+                  <option value="blue">Blue</option>
+                  <option value="yellow">Yellow/Amber</option>
+                  <option value="grey">Grey/Slate</option>
+                  <option value="red">Red/Rose</option>
+                  <option value="green">Green/Emerald</option>
+                </select>
+              </div>
+
+              <DialogFooter className="mt-4 pt-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsAddFolderOpen(false)}
+                  className="border-border text-xs rounded-xl h-10"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={addFolderLoading || !addFolderLabel}
+                  className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold text-xs rounded-xl h-10 min-w-[120px]"
+                >
+                  {addFolderLoading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…
+                    </span>
+                  ) : "Save Folder"}
                 </Button>
               </DialogFooter>
             </form>

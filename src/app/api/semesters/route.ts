@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     await connectToDatabase();
 
     const body = await request.json();
-    const { label, year, semNumber, courses } = body;
+    const { label, year, semNumber } = body;
 
     if (!label || !year || !semNumber) {
       return NextResponse.json(
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     // Upsert: update if already exists, create if not
     const semester = await Semester.findOneAndUpdate(
       { label },
-      { $set: { year, semNumber, courses: courses ?? [] } },
+      { $set: { year, semNumber } },
       { new: true, upsert: true, runValidators: true }
     );
 
