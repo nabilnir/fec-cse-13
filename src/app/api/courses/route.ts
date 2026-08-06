@@ -10,20 +10,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/mongodb";
 import Course from "@/lib/models/Course";
+import { isMongoConnectionError } from "@/lib/localFolders";
+import { readLocalCourses, upsertLocalCourse } from "@/lib/localCourses";
 
 // ─── GET ──────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const semesterLabel = searchParams.get("semesterLabel");
+
   try {
     await connectToDatabase();
-
-    const { searchParams } = new URL(request.url);
-    const semesterLabel = searchParams.get("semesterLabel");
 
     const query = semesterLabel ? { semesterLabel } : {};
     const courses = await Course.find(query).sort({ code: 1 }).lean();
 
     return NextResponse.json({ success: true, data: courses });
   } catch (error: unknown) {
+    if (isMongoConnectionError(error)) {
+      const courses = await readLocalCourses();
+      const filtered = semesterLabel ? courses.filter((course) => course.semesterLabel === semesterLabel) : courses;
+      return NextResponse.json({ success: true, data: filtered });
+    }
+
     console.error("[GET /api/courses]", error);
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
@@ -35,18 +43,35 @@ export async function GET(request: NextRequest) {
 
 // ─── POST ─────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  let body: {
+    code?: string;
+    title?: string;
+    department?: string;
+    creditHours?: number;
+    instructor?: string;
+    semesterLabel?: string;
+  };
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Invalid JSON body" },
+      { status: 400 }
+    );
+  }
+
+  const { code, title, department, creditHours, instructor, semesterLabel } = body;
+
+  if (!code || !title || !department || !semesterLabel) {
+    return NextResponse.json(
+      { success: false, error: "code, title, department, and semesterLabel are required" },
+      { status: 400 }
+    );
+  }
+
   try {
     await connectToDatabase();
-
-    const body = await request.json();
-    const { code, title, department, creditHours, instructor, semesterLabel } = body;
-
-    if (!code || !title || !department || !semesterLabel) {
-      return NextResponse.json(
-        { success: false, error: "code, title, department, and semesterLabel are required" },
-        { status: 400 }
-      );
-    }
 
     // Upsert based on course code
     const course = await Course.findOneAndUpdate(
@@ -57,6 +82,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: course }, { status: 201 });
   } catch (error: unknown) {
+    if (isMongoConnectionError(error)) {
+      const course = await upsertLocalCourse({ code, title, department, creditHours, instructor, semesterLabel });
+      return NextResponse.json({ success: true, data: course }, { status: 201 });
+    }
+
     console.error("[POST /api/courses]", error);
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(

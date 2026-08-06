@@ -10,6 +10,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/mongodb";
 import DocFile from "@/lib/models/DocFile";
 import Folder from "@/lib/models/Folder";
+import { isMongoConnectionError } from "@/lib/localFolders";
+import { readLocalFiles, createLocalFile } from "@/lib/localFiles";
 
 // ─── GET ──────────────────────────────────────────────────────────
 export async function GET() {
@@ -18,6 +20,11 @@ export async function GET() {
     const files = await DocFile.find({}).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: files });
   } catch (error: unknown) {
+    if (isMongoConnectionError(error)) {
+      const files = await readLocalFiles();
+      return NextResponse.json({ success: true, data: files });
+    }
+
     console.error("[GET /api/files]", error);
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
@@ -29,28 +36,48 @@ export async function GET() {
 
 // ─── POST ─────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  let body: {
+    title?: string;
+    subject?: string;
+    department?: string;
+    year?: string;
+    type?: string;
+    uploadedBy?: string;
+    driveId?: string;
+    color?: string;
+    size?: string;
+  };
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Invalid JSON body" },
+      { status: 400 }
+    );
+  }
+
+  const {
+    title,
+    subject,
+    department,
+    year,
+    type,
+    uploadedBy,
+    driveId,
+    color,
+    size,
+  } = body;
+
+  if (!title || !subject || !department || !year || !type || !uploadedBy || !driveId || !color) {
+    return NextResponse.json(
+      { success: false, error: "Missing required fields" },
+      { status: 400 }
+    );
+  }
+
   try {
     await connectToDatabase();
-
-    const body = await request.json();
-    const {
-      title,
-      subject,
-      department,
-      year,
-      type,
-      uploadedBy,
-      driveId,
-      color,
-      size,
-    } = body;
-
-    if (!title || !subject || !department || !year || !type || !uploadedBy || !driveId || !color) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields" },
-        { status: 400 }
-      );
-    }
 
     // 1. Create the DocFile document
     const fileDate = new Date().toISOString().split("T")[0];
@@ -88,6 +115,22 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: newFile }, { status: 201 });
   } catch (error: unknown) {
+    if (isMongoConnectionError(error)) {
+      const newFile = await createLocalFile({
+        title,
+        subject,
+        department,
+        year,
+        type,
+        uploadedBy,
+        driveId,
+        color,
+        size,
+      });
+
+      return NextResponse.json({ success: true, data: newFile }, { status: 201 });
+    }
+
     console.error("[POST /api/files]", error);
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
