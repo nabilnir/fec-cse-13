@@ -713,6 +713,42 @@ export default function NotesDashboard() {
     return result;
   }, [files, selectedCourse, selectedYear, selectedType, selectedFolder, searchQuery, activeCourseFilter, sortBy]);
 
+  const openCourseFiles = (course: SemesterCourse) => {
+    setActiveCourseFilter({ code: course.code, title: course.title });
+    setSelectedFolder(null);
+    setSelectedCourse("All");
+    setSelectedType("All");
+    setSearchQuery("");
+    setSelectedYear(
+      selectedSemester?.startsWith("1st") ? "1st Year" :
+      selectedSemester?.startsWith("2nd") ? "2nd Year" :
+      selectedSemester?.startsWith("3rd") ? "3rd Year" : "4th Year"
+    );
+    setActiveTab("files");
+  };
+
+  const goBackFromSection = () => {
+    if (activeTab === "courses") {
+      setActiveTab("dashboard");
+      return;
+    }
+
+    if (activeTab === "files") {
+      if (activeCourseFilter) {
+        setActiveCourseFilter(null);
+        setActiveTab("courses");
+        return;
+      }
+
+      if (selectedFolder) {
+        setSelectedFolder(null);
+        return;
+      }
+
+      setActiveTab("dashboard");
+    }
+  };
+
   return (
     <div className="flex h-screen bg-[#f3f5f6] text-foreground font-sans overflow-hidden dark:bg-[#071412] dark:text-teal-50">
       
@@ -760,7 +796,7 @@ export default function NotesDashboard() {
             {[
               { id: "dashboard", label: "Dashboard", icon: Grid },
               { id: "calendar", label: "Calendar", icon: BookOpen },
-              { id: "courses", label: "Topics", icon: Layers },
+              { id: "courses", label: "Courses", icon: Layers },
               { id: "settings", label: "Settings", icon: Settings },
             ].map((item) => {
               const Icon = item.icon;
@@ -1036,7 +1072,7 @@ export default function NotesDashboard() {
                               onClick={() => setActiveTab("courses")}
                               className="text-[10px] font-bold text-accent whitespace-nowrap hover:text-primary transition-colors"
                             >
-                              Topics →
+                              Courses →
                             </button>
                             <button
                               onClick={() => { setSelectedYear(selectedSemester!.startsWith("1st") ? "1st Year" : selectedSemester!.startsWith("2nd") ? "2nd Year" : selectedSemester!.startsWith("3rd") ? "3rd Year" : "4th Year"); setActiveTab("files"); }}
@@ -1054,7 +1090,7 @@ export default function NotesDashboard() {
                   <div className="lg:col-span-5 bg-white dark:bg-[#0b1d1a] p-6 rounded-3xl border border-border shadow-sm flex flex-col gap-4">
                     <div className="flex items-center justify-between border-b border-border pb-3">
                       <div>
-                        <h3 className="font-serif font-bold text-sm text-primary dark:text-teal-200">Topics</h3>
+                        <h3 className="font-serif font-bold text-sm text-primary dark:text-teal-200">Courses</h3>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
                           {selectedSemester ? selectedSemester : "Select a semester to view courses"}
                         </p>
@@ -1093,7 +1129,19 @@ export default function NotesDashboard() {
                           const colors = ["bg-blue-500","bg-amber-500","bg-emerald-500","bg-purple-500","bg-rose-500","bg-teal-500"];
                           const bg = colors[idx % colors.length];
                           return (
-                            <div key={idx} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50/60 dark:bg-slate-900/40 border border-border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                            <div
+                              key={idx}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => openCourseFiles(course)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  openCourseFiles(course);
+                                }
+                              }}
+                              className="flex items-center justify-between p-3 rounded-2xl bg-slate-50/60 dark:bg-slate-900/40 border border-border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                            >
                               <div className="flex items-center gap-3">
                                 <div className={`w-9 h-9 rounded-xl ${bg} text-white flex items-center justify-center font-bold text-[10px] shrink-0`}>
                                   {course.code.split("-")[0]}
@@ -1209,6 +1257,17 @@ export default function NotesDashboard() {
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border pb-6">
                   <div>
                     <h1 className="font-serif text-3xl font-extrabold text-primary dark:text-teal-100 flex items-center gap-2">
+                        {activeTab === "files" && !selectedFolder && !activeCourseFilter && (
+                          <button
+                            type="button"
+                            onClick={goBackFromSection}
+                            className="mr-1 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-white text-accent shadow-sm transition-colors hover:bg-slate-50 dark:bg-[#0b1d1a] dark:hover:bg-slate-900"
+                            aria-label="Back to previous section"
+                            title="Back to previous section"
+                          >
+                            <ArrowLeft className="h-4 w-4" />
+                          </button>
+                        )}
                       {selectedFolder ? (
                         <>
                           <button
@@ -1287,7 +1346,7 @@ export default function NotesDashboard() {
                         className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground hover:text-primary transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
                         <ArrowLeft className="w-3 h-3" />
-                        Back to My Topics
+                        Back to My Courses
                       </button>
                       <button
                         onClick={() => setActiveCourseFilter(null)}
@@ -1559,13 +1618,24 @@ export default function NotesDashboard() {
                 className="max-w-4xl mx-auto flex flex-col gap-6"
               >
                 {/* Header */}
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="font-serif text-3xl font-extrabold text-primary dark:text-teal-100">My Topics</h2>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {selectedSemester ? `Showing courses for ${selectedSemester}` : "Select a semester on the dashboard to filter courses"}
-                    </p>
-                  </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <button
+                        type="button"
+                        onClick={goBackFromSection}
+                        className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-white text-accent shadow-sm transition-colors hover:bg-slate-50 dark:bg-[#0b1d1a] dark:hover:bg-slate-900"
+                        aria-label="Back to previous section"
+                        title="Back to previous section"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                      </button>
+                      <div>
+                        <h2 className="font-serif text-3xl font-extrabold text-primary dark:text-teal-100">My Courses</h2>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {selectedSemester ? `Showing courses for ${selectedSemester}` : "Select a semester on the dashboard to filter courses"}
+                        </p>
+                      </div>
+                    </div>
                   <button
                     onClick={() => setIsAddSemesterOpen(true)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent text-accent-foreground font-bold text-xs hover:bg-accent/90 transition-colors shadow-md shrink-0"
@@ -1653,7 +1723,19 @@ export default function NotesDashboard() {
                       {activeSemesterCourses.map((course, idx) => {
                         const colors = ["bg-blue-500","bg-amber-500","bg-emerald-500","bg-purple-500","bg-rose-500","bg-teal-500"];
                         return (
-                          <div key={idx} className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50/60 dark:hover:bg-slate-900/40 transition-colors">
+                          <div
+                            key={idx}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => openCourseFiles(course)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                openCourseFiles(course);
+                              }
+                            }}
+                            className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50/60 dark:hover:bg-slate-900/40 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                          >
                             <span className="col-span-1 text-[10px] font-mono text-muted-foreground">{idx + 1}</span>
                             <div className="col-span-2 flex items-center gap-2">
                               <div className={`w-7 h-7 rounded-lg ${colors[idx % colors.length]} text-white flex items-center justify-center font-bold text-[9px] shrink-0`}>
@@ -1661,8 +1743,9 @@ export default function NotesDashboard() {
                               </div>
                               <span className="text-[10px] font-bold text-muted-foreground">{course.code}</span>
                             </div>
-                            <div className="col-span-4">
+                            <div className="col-span-4 flex flex-col rounded-xl px-2 py-1.5 -mx-2 -my-1.5 hover:bg-accent/5 transition-colors">
                               <span className="text-xs font-bold text-primary dark:text-teal-200 leading-tight">{course.title}</span>
+                              <span className="text-[10px] text-muted-foreground font-semibold">{course.code}</span>
                               {course.instructor && <p className="text-[9px] text-muted-foreground mt-0.5">{course.instructor}</p>}
                             </div>
                             <span className="col-span-2">
@@ -1671,7 +1754,9 @@ export default function NotesDashboard() {
                             <span className="col-span-2 text-xs font-bold text-muted-foreground">{course.creditHours} cr/wk</span>
                             <div className="col-span-1">
                               <button
-                                onClick={() => {
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
                                   // Set active course filter so Files tab auto-filters & sorts by this course
                                   setActiveCourseFilter({ code: course.code, title: course.title });
                                   // Reset other filters to avoid conflicts
@@ -1773,7 +1858,7 @@ export default function NotesDashboard() {
                 {previewFile.title}
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground font-semibold">
-                Uploaded by {previewFile.uploadedBy} on {previewFile.uploadDate}
+                {previewFile.subject} • {previewFile.size}
               </DialogDescription>
             </DialogHeader>
 
@@ -1782,25 +1867,9 @@ export default function NotesDashboard() {
               <div className="absolute inset-0 opacity-15 pointer-events-none bg-cover bg-center" style={{ backgroundImage: "url('/campus_hero.png')" }} />
               
               {/* Actual Google Drive Image CDN Thumbnail */}
-              <img
-                src={`https://drive.google.com/thumbnail?id=${previewFile.driveId}`}
-                alt="Document Preview"
-                className="object-contain max-h-full max-w-full drop-shadow relative z-10"
-                onError={(e) => {
-                  // Fallback icon in case drive URL fails or lacks access
-                  e.currentTarget.style.display = "none";
-                  const fallback = document.getElementById("fallback-placeholder");
-                  if (fallback) fallback.style.display = "flex";
-                }}
-              />
-              
-              {/* Fallback stylized document layout */}
-              <div id="fallback-placeholder" className="hidden flex-col items-center gap-3 relative z-10 text-muted-foreground/60">
-                <FileText className="w-16 h-16 text-accent/50" />
-                <span className="text-[10px] font-bold uppercase tracking-wider font-mono">
+              <span className="relative z-10 text-[10px] font-bold uppercase tracking-wider font-mono">
                   {previewFile.subject} • {previewFile.size}
                 </span>
-              </div>
             </div>
 
             <div className="flex flex-col gap-1.5 text-[11px] text-muted-foreground py-2 border-t border-b border-border/50 my-2">
