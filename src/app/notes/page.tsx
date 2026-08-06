@@ -657,9 +657,18 @@ export default function NotesDashboard() {
     return folders.filter((folder) => {
       const matchCourse = selectedCourse === "All" || folder.name === selectedCourse;
       const matchYear = selectedYear === "All" || folder.year === selectedYear;
-      return matchCourse && matchYear;
+
+      const matchActiveCourse = !activeCourseFilter ||
+        folder.name.toLowerCase().includes(activeCourseFilter.title.toLowerCase()) ||
+        folder.name.toLowerCase().includes(activeCourseFilter.code.toLowerCase()) ||
+        folder.name.toLowerCase().replace(/[\s-]/g, "").includes(activeCourseFilter.code.toLowerCase().replace(/[\s-]/g, "")) ||
+        activeCourseFilter.code.toLowerCase().replace(/[\s-]/g, "").includes(folder.name.toLowerCase().replace(/[\s-]/g, "")) ||
+        folder.name.toLowerCase().replace(/[\s-]/g, "").includes(activeCourseFilter.title.toLowerCase().replace(/[\s-]/g, "")) ||
+        activeCourseFilter.title.toLowerCase().replace(/[\s-]/g, "").includes(folder.name.toLowerCase().replace(/[\s-]/g, ""));
+
+      return matchCourse && matchYear && matchActiveCourse;
     });
-  }, [folders, selectedCourse, selectedYear]);
+  }, [folders, selectedCourse, selectedYear, activeCourseFilter]);
 
   const filteredFiles = useMemo(() => {
     let result = files.filter((file) => {
