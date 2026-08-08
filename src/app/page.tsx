@@ -182,6 +182,8 @@ export default function LandingPage() {
             alt="Faridpur Engineering College Campus"
             fill
             priority
+              sizes="100vw"
+              loading="eager"
             className="object-cover object-center opacity-85"
           />
           {/* Subtle overlay gradients to blend the illustration */}
@@ -366,6 +368,7 @@ export default function LandingPage() {
                   src="/campus_life.png"
                   alt="Student campus life illustration"
                   fill
+                  sizes="(max-width: 1024px) 100vw, 50vw"
                   className="object-cover transition-transform duration-500 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-6">
@@ -378,6 +381,7 @@ export default function LandingPage() {
                   src="/campus_lab.png"
                   alt="Modern electronics laboratory"
                   fill
+                  sizes="(max-width: 1024px) 100vw, 50vw"
                   className="object-cover transition-transform duration-500 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-4">
@@ -520,6 +524,7 @@ export default function LandingPage() {
                   src="/campus_life.png"
                   alt="Students competing in a coding challenge"
                   fill
+                  sizes="(max-width: 1024px) 100vw, 50vw"
                   className="object-cover"
                 />
               </div>

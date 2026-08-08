@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Folder,
   FileText,
@@ -37,6 +39,9 @@ import {
   LogIn,
   Shield,
   ShieldX,
+  MoreVertical,
+  Pencil,
+  Share2,
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import {
@@ -183,6 +188,9 @@ export default function NotesDashboard() {
   // Database State
   const [folders, setFolders] = useState<DocFolder[]>(initialFolders);
   const [files, setFiles] = useState<DocFile[]>(initialFiles);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   // Files View Search & Filtering States
   const [searchQuery, setSearchQuery] = useState("");
@@ -300,6 +308,17 @@ export default function NotesDashboard() {
   const [addFolderColor, setAddFolderColor] = useState<"blue" | "yellow" | "grey" | "red" | "green">("blue");
   const [addFolderLoading, setAddFolderLoading] = useState(false);
   const [addFolderSuccess, setAddFolderSuccess] = useState(false);
+  const [openFolderMenuId, setOpenFolderMenuId] = useState<string | null>(null);
+  const [isRenameFolderOpen, setIsRenameFolderOpen] = useState(false);
+  const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
+  const [renameFolderName, setRenameFolderName] = useState("");
+  const [renameFolderLoading, setRenameFolderLoading] = useState(false);
+  const openFolderMenuRef = useRef<HTMLDivElement | null>(null);
+  const openFolderMenuIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    openFolderMenuIdRef.current = openFolderMenuId;
+  }, [openFolderMenuId]);
 
   const handleAddFolder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -344,6 +363,113 @@ export default function NotesDashboard() {
       setAddFolderLoading(false);
     }
   };
+
+  const openFolder = (folder: DocFolder) => {
+    setSelectedFolder(folder.name);
+    setActiveTab("files");
+    setOpenFolderMenuId(null);
+    router.replace(`${pathname}?folder=${encodeURIComponent(folder.id)}`);
+  };
+
+  const clearFolderSelection = () => {
+    setSelectedFolder(null);
+    setOpenFolderMenuId(null);
+    router.replace(pathname);
+  };
+
+  const getFolderShareLink = (folder: DocFolder) => {
+    if (typeof window === "undefined") return "";
+    return `${window.location.origin}${pathname}?folder=${encodeURIComponent(folder.id)}`;
+  };
+
+  const handleShareFolder = async (folder: DocFolder) => {
+    const link = getFolderShareLink(folder);
+    if (!link) return;
+
+    await navigator.clipboard.writeText(link);
+    setOpenFolderMenuId(null);
+  };
+
+  const beginRenameFolder = (folder: DocFolder) => {
+    setRenameFolderId(folder.id);
+    setRenameFolderName(folder.name);
+    setIsRenameFolderOpen(true);
+    setOpenFolderMenuId(null);
+  };
+
+  const handleRenameFolder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameFolderId || !renameFolderName.trim()) return;
+
+    setRenameFolderLoading(true);
+    try {
+      const response = await fetch("/api/folders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: renameFolderId, name: renameFolderName.trim() }),
+      });
+
+      const json = await response.json();
+      if (!json.success) throw new Error(json.error);
+
+      setFolders((prev) => prev.map((folder) => (folder.id === renameFolderId ? json.data : folder)));
+      setSelectedFolder((current) => (current && current === folders.find((folder) => folder.id === renameFolderId)?.name ? json.data.name : current));
+      setIsRenameFolderOpen(false);
+      setRenameFolderId(null);
+      setRenameFolderName("");
+    } catch (err) {
+      console.error("Failed to rename folder:", err);
+    } finally {
+      setRenameFolderLoading(false);
+    }
+  };
+
+  const handleDeleteFolder = async (folder: DocFolder) => {
+    const confirmed = window.confirm(`Delete ${folder.name}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch("/api/folders", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: folder.id }),
+      });
+
+      const json = await response.json();
+      if (!json.success) throw new Error(json.error);
+
+      setFolders((prev) => prev.filter((item) => item.id !== folder.id));
+      if (selectedFolder === folder.name) {
+        clearFolderSelection();
+      }
+      setOpenFolderMenuId(null);
+    } catch (err) {
+      console.error("Failed to delete folder:", err);
+    }
+  };
+
+  useEffect(() => {
+    const folderParam = searchParams.get("folder");
+    if (!folderParam || folders.length === 0) return;
+
+    const matchedFolder = folders.find((folder) => folder.id === folderParam || folder.name === folderParam);
+    if (matchedFolder) {
+      setSelectedFolder(matchedFolder.name);
+      setActiveTab("files");
+    }
+  }, [folders, searchParams]);
+
+  useEffect(() => {
+    const closeMenu = (event: PointerEvent) => {
+      if (!openFolderMenuIdRef.current) return;
+      const target = event.target as Node | null;
+      if (target && openFolderMenuRef.current?.contains(target)) return;
+      setOpenFolderMenuId(null);
+    };
+
+    document.addEventListener("pointerdown", closeMenu);
+    return () => document.removeEventListener("pointerdown", closeMenu);
+  }, []);
 
   // Fetch all semesters, courses, folders, and files from DB on mount
   useEffect(() => {
@@ -525,6 +651,9 @@ export default function NotesDashboard() {
       if (courseRes.success) setDbCourses(courseRes.data);
       if (foldersRes.success) setFolders(foldersRes.data);
       if (filesRes.success) setFiles(filesRes.data);
+      if (!searchParams.get("folder")) {
+        setSelectedFolder(null);
+      }
 
       setSyncSuccess(true);
       setTimeout(() => setSyncSuccess(false), 3000);
@@ -724,7 +853,7 @@ export default function NotesDashboard() {
 
   const openCourseFiles = (course: SemesterCourse) => {
     setActiveCourseFilter({ code: course.code, title: course.title });
-    setSelectedFolder(null);
+    clearFolderSelection();
     setSelectedCourse("All");
     setSelectedType("All");
     setSearchQuery("");
@@ -750,7 +879,7 @@ export default function NotesDashboard() {
       }
 
       if (selectedFolder) {
-        setSelectedFolder(null);
+        clearFolderSelection();
         return;
       }
 
@@ -815,7 +944,7 @@ export default function NotesDashboard() {
                   key={item.id}
                   onClick={() => {
                     setActiveTab(item.id as any);
-                    setSelectedFolder(null); // Clear selected folders
+                    clearFolderSelection();
                   }}
                   className={`flex items-center rounded-xl font-semibold text-sm transition-all duration-200 ${
                     isSidebarCollapsed
@@ -964,6 +1093,8 @@ export default function NotesDashboard() {
                     src="/campus_hero.png"
                     alt="FEC Autumn Building"
                     fill
+                    sizes="(max-width: 1024px) 100vw, 1200px"
+                    loading="eager"
                     className="object-cover opacity-60 group-hover:scale-[1.02] transition-transform duration-700 ease-out"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent flex flex-col justify-end p-8 gap-3">
@@ -1225,14 +1356,13 @@ export default function NotesDashboard() {
                         <div
                           key={folder.id}
                           onClick={() => {
-                            setSelectedFolder(folder.name);
+                            openFolder(folder);
                             setSelectedCourse("All");
                             setSelectedType("All");
                             setActiveCourseFilter(null);
                             setSearchQuery("");
-                            setActiveTab("files");
                           }}
-                          className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-xl transition-colors cursor-pointer group"
+                          className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-xl transition-colors cursor-pointer group relative"
                         >
                           <Folder className="w-4 h-4 text-amber-500 shrink-0 group-hover:scale-110 transition-transform" />
                           <div className="flex flex-col min-w-0 flex-1">
@@ -1242,6 +1372,71 @@ export default function NotesDashboard() {
                             <span className="text-[9px] text-muted-foreground">
                               {folder.filesCount} Files • {folder.year}
                             </span>
+                          </div>
+                          <div
+                            data-folder-menu="true"
+                            ref={openFolderMenuId === folder.id ? openFolderMenuRef : null}
+                            className="relative"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setOpenFolderMenuId((current) => (current === folder.id ? null : folder.id));
+                              }}
+                              className="text-muted-foreground hover:text-primary rounded-lg p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                              aria-label={`Folder actions for ${folder.name}`}
+                              title="Folder actions"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+
+                            <AnimatePresence>
+                              {openFolderMenuId === folder.id && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                                  exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                                  transition={{ duration: 0.15 }}
+                                  className="absolute right-0 top-8 w-44 rounded-2xl border border-border bg-white p-2 shadow-xl dark:bg-[#0b1d1a] z-30"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      beginRenameFolder(folder);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-900"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5 text-accent" />
+                                    Rename
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleShareFolder(folder);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-900"
+                                  >
+                                    <Share2 className="h-3.5 w-3.5 text-accent" />
+                                    Share link
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleDeleteFolder(folder);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    Delete
+                                  </button>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
                           </div>
                         </div>
                       ))}
@@ -1280,7 +1475,7 @@ export default function NotesDashboard() {
                       {selectedFolder ? (
                         <>
                           <button
-                            onClick={() => setSelectedFolder(null)}
+                            onClick={clearFolderSelection}
                             className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 mr-1"
                           >
                             <ArrowLeft className="w-5 h-5 text-accent" />
@@ -1445,10 +1640,75 @@ export default function NotesDashboard() {
                           return (
                             <motion.div
                               whileHover={{ y: -3 }}
-                              onClick={() => setSelectedFolder(folder.name)}
+                              onClick={() => openFolder(folder)}
                               key={folder.id}
                               className="bg-amber-50/60 dark:bg-[#0c2420] border border-amber-250/30 p-5 rounded-2xl shadow-sm hover:shadow-md cursor-pointer transition-all flex flex-col justify-between h-[130px] group relative overflow-hidden"
                             >
+                              <div
+                                data-folder-menu="true"
+                                ref={openFolderMenuId === folder.id ? openFolderMenuRef : null}
+                                className="absolute right-3 top-3 z-20"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setOpenFolderMenuId((current) => (current === folder.id ? null : folder.id));
+                                  }}
+                                  className="rounded-full border border-border/70 bg-white/90 p-2 text-muted-foreground shadow-sm opacity-0 transition-opacity hover:text-primary group-hover:opacity-100 dark:bg-[#0b1d1a]/90"
+                                  aria-label={`Open actions for ${folder.name}`}
+                                  title="Folder actions"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </button>
+
+                                <AnimatePresence>
+                                  {openFolderMenuId === folder.id && (
+                                    <motion.div
+                                      initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                                      transition={{ duration: 0.15 }}
+                                      className="absolute right-0 top-11 w-44 rounded-2xl border border-border bg-white p-2 shadow-xl dark:bg-[#0b1d1a] z-30"
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          beginRenameFolder(folder);
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-900"
+                                      >
+                                        <Pencil className="h-3.5 w-3.5 text-accent" />
+                                        Rename
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void handleShareFolder(folder);
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-900"
+                                      >
+                                        <Share2 className="h-3.5 w-3.5 text-accent" />
+                                        Share link
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void handleDeleteFolder(folder);
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        Delete
+                                      </button>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
                               <div className="flex justify-between items-start">
                                 {/* Folder Tab Graphic design styling */}
                                 <div className="absolute top-0 left-5 w-12 h-2 bg-amber-500 rounded-b-md" />
@@ -1773,6 +2033,7 @@ export default function NotesDashboard() {
                                   setSelectedCourse("All");
                                   setSelectedType("All");
                                   setSearchQuery("");
+                                  clearFolderSelection();
                                   setSelectedYear(
                                     selectedSemester?.startsWith("1st") ? "1st Year" :
                                     selectedSemester?.startsWith("2nd") ? "2nd Year" :
@@ -2514,6 +2775,60 @@ export default function NotesDashboard() {
               </DialogFooter>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isRenameFolderOpen} onOpenChange={(open) => {
+        setIsRenameFolderOpen(open);
+        if (!open) {
+          setRenameFolderId(null);
+          setRenameFolderName("");
+        }
+      }}>
+        <DialogContent className="max-w-md bg-white dark:bg-[#0b1d1a] border border-border p-6 rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl font-bold text-primary dark:text-teal-100">
+              Rename Folder
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Update the folder name. The folder link stays valid because sharing uses the folder id.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleRenameFolder} className="flex flex-col gap-4 mt-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Folder Name</label>
+              <Input
+                required
+                autoFocus
+                value={renameFolderName}
+                onChange={(e) => setRenameFolderName(e.target.value)}
+                className="h-10 text-xs border-border rounded-xl"
+              />
+            </div>
+
+            <DialogFooter className="mt-2 pt-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsRenameFolderOpen(false)}
+                className="border-border text-xs rounded-xl h-10"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={renameFolderLoading || !renameFolderName.trim()}
+                className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold text-xs rounded-xl h-10 min-w-[120px]"
+              >
+                {renameFolderLoading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…
+                  </span>
+                ) : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
