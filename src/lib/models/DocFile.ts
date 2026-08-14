@@ -16,6 +16,8 @@ export interface IDocFile extends Document {
   driveId: string;        // Google Drive File ID
   color: string;          // e.g. "blue"
   size?: string;          // e.g. "2.4 MB"
+  folderId?: mongoose.Types.ObjectId | null; // reference to containing folder
+  ownerId?: string | null; // Firebase user UID
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +33,8 @@ const DocFileSchema = new Schema<IDocFile>(
     uploadDate: { type: String, required: true, trim: true },
     driveId:    { type: String, required: true, trim: true },
     color:      { type: String, required: true, trim: true },
+    folderId:   { type: Schema.Types.ObjectId, ref: "Folder", default: null },
+    ownerId:    { type: String, default: null },
     size:       { type: String, trim: true },
   },
   { timestamps: true }
@@ -39,5 +43,9 @@ const DocFileSchema = new Schema<IDocFile>(
 // Prevent model re-compilation on hot-reload in development
 const DocFile: Model<IDocFile> =
   mongoose.models.DocFile ?? mongoose.model<IDocFile>("DocFile", DocFileSchema);
+
+// indexes to speed lookups
+DocFileSchema.index({ folderId: 1 });
+DocFileSchema.index({ ownerId: 1 });
 
 export default DocFile;

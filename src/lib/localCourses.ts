@@ -55,7 +55,7 @@ export async function readLocalCourses() {
 export async function upsertLocalCourse(input: CourseInput) {
   const now = new Date().toISOString();
   const courses = await readLocalCourses();
-  const index = courses.findIndex((course) => course.code === input.code);
+  const index = courses.findIndex((course) => course.code === input.code && course.title === input.title);
 
   if (index >= 0) {
     courses[index] = {
