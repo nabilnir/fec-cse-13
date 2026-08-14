@@ -18,7 +18,7 @@ export interface ICourse extends Document {
 
 const CourseSchema = new Schema<ICourse>(
   {
-    code:          { type: String, required: true, trim: true, unique: true },
+    code:          { type: String, required: true, trim: true },
     title:         { type: String, required: true, trim: true },
     department:    { type: String, required: true, trim: true },
     creditHours:   { type: Number, required: true, default: 3 },

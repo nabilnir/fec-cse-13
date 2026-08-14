@@ -73,10 +73,10 @@ export async function POST(request: NextRequest) {
   try {
     await connectToDatabase();
 
-    // Upsert based on course code
+    // Upsert based on course code and title
     const course = await Course.findOneAndUpdate(
-      { code },
-      { $set: { title, department, creditHours: creditHours ?? 3, instructor, semesterLabel } },
+      { code, title },
+      { $set: { department, creditHours: creditHours ?? 3, instructor, semesterLabel } },
       { new: true, upsert: true, runValidators: true }
     );
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
 import { useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -69,6 +69,9 @@ interface DocFile {
   driveId: string; // Google Drive File ID
   color: "blue" | "yellow" | "grey" | "red" | "green";
   size?: string;
+  folderId?: string | null;
+  ownerId?: string | null;
+  breadcrumbs?: { id: string; name: string }[];
 }
 
 interface DocFolder {
@@ -78,6 +81,7 @@ interface DocFolder {
   year: "1st Year" | "2nd Year" | "3rd Year" | "4th Year";
   color: "blue" | "yellow" | "grey" | "red" | "green";
   filesCount: number;
+  parentId?: string | null;
 }
 
 // Default seed data for MongoDB
@@ -180,7 +184,7 @@ const getBadgeStyles = (color: string) => {
   }
 };
 
-export default function NotesDashboard() {
+function NotesDashboardContent() {
   // Navigation State
   const [activeTab, setActiveTab] = useState<"dashboard" | "calendar" | "courses" | "files" | "settings">("dashboard");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -199,6 +203,7 @@ export default function NotesDashboard() {
   const [selectedType, setSelectedType] = useState<string>("All");
   const [sortBy, setSortBy] = useState<string>("date-newest");
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   // Tracks the course whose Files button was clicked from the Courses tab
   const [activeCourseFilter, setActiveCourseFilter] = useState<{ code: string; title: string } | null>(null);
 
@@ -283,6 +288,21 @@ export default function NotesDashboard() {
   // Semester Selection State
   const [selectedSemester, setSelectedSemester] = useState<string | null>(null);
 
+  // Keep `selectedYear` in sync with `selectedSemester` so folder/file
+  // filters immediately reflect the chosen semester without extra clicks.
+  useEffect(() => {
+    if (!selectedSemester) {
+      setSelectedYear("All");
+      return;
+    }
+
+    const year = selectedSemester.startsWith("1st") ? "1st Year" :
+      selectedSemester.startsWith("2nd") ? "2nd Year" :
+      selectedSemester.startsWith("3rd") ? "3rd Year" : "4th Year";
+
+    setSelectedYear(year);
+  }, [selectedSemester]);
+
   // Semester & Course API State
   interface SemesterCourse { code: string; title: string; department: string; creditHours: number; instructor?: string; semesterLabel?: string; }
   interface SemesterDoc { label: string; year: string; semNumber: number; }
@@ -316,37 +336,123 @@ export default function NotesDashboard() {
   const openFolderMenuRef = useRef<HTMLDivElement | null>(null);
   const openFolderMenuIdRef = useRef<string | null>(null);
 
+  // Hierarchical Folder States
+  const [breadcrumbs, setBreadcrumbs] = useState<{ id: string; name: string }[]>([]);
+  const [allFoldersList, setAllFoldersList] = useState<DocFolder[]>([]);
+  const [isFoldersListLoading, setIsFoldersListLoading] = useState(false);
+  const [isDirectoryLoading, setIsDirectoryLoading] = useState(false);
+
+  // Move Folder Modal States
+  const [isMoveFolderOpen, setIsMoveFolderOpen] = useState(false);
+  const [moveFolderId, setMoveFolderId] = useState<string | null>(null);
+  const [moveFolderTargetId, setMoveFolderTargetId] = useState<string | null>(null);
+
+  // Move File Modal States
+  const [isMoveFileOpen, setIsMoveFileOpen] = useState(false);
+  const [moveFileId, setMoveFileId] = useState<string | null>(null);
+  const [moveFileTargetId, setMoveFileTargetId] = useState<string | null>(null);
+
   useEffect(() => {
     openFolderMenuIdRef.current = openFolderMenuId;
   }, [openFolderMenuId]);
+
+  // Auth Header helper
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : null;
+    return token ? { "Authorization": `Bearer ${token}` } : {};
+  };
+
+  // Fetch all folders flat for move lists and selectors
+  const fetchAllFolders = async () => {
+    setIsFoldersListLoading(true);
+    try {
+      const res = await fetch("/api/folders").then((r) => r.json());
+      if (res.success) {
+        setAllFoldersList(res.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch folders list:", err);
+    } finally {
+      setIsFoldersListLoading(false);
+    }
+  };
+
+  // Load directory contents dynamically
+  useEffect(() => {
+    const fetchDirectory = async () => {
+      setIsDirectoryLoading(true);
+      try {
+        let foldersUrl = "/api/folders";
+        let filesUrl = "/api/files";
+
+        if (searchQuery.trim()) {
+          foldersUrl += `?search=${encodeURIComponent(searchQuery)}`;
+          filesUrl += `?search=${encodeURIComponent(searchQuery)}`;
+        } else {
+          foldersUrl += `?parentId=${selectedFolderId || "null"}`;
+          filesUrl += `?folderId=${selectedFolderId || "null"}`;
+        }
+
+        const [foldersRes, filesRes] = await Promise.all([
+          fetch(foldersUrl).then((r) => r.json()),
+          fetch(filesUrl).then((r) => r.json()),
+        ]);
+
+        if (foldersRes.success) {
+          setFolders(foldersRes.data);
+          if (foldersRes.breadcrumbs) {
+            setBreadcrumbs(foldersRes.breadcrumbs);
+            if (foldersRes.breadcrumbs.length > 0) {
+              const activeFolder = foldersRes.breadcrumbs[foldersRes.breadcrumbs.length - 1];
+              setSelectedFolder(activeFolder.name);
+            } else {
+              setSelectedFolder(null);
+            }
+          } else {
+            setBreadcrumbs([]);
+            setSelectedFolder(null);
+          }
+        }
+        if (filesRes.success) {
+          setFiles(filesRes.data);
+        }
+      } catch (err) {
+        console.error("Failed to load directory content:", err);
+      } finally {
+        setIsDirectoryLoading(false);
+      }
+    };
+
+    fetchDirectory();
+  }, [selectedFolderId, searchQuery]);
 
   const handleAddFolder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addFolderLabel) return;
     setAddFolderLoading(true);
     try {
+      const headers = {
+        "Content-Type": "application/json",
+        ...(await getAuthHeaders()),
+      };
       const res = await fetch("/api/folders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           name: addFolderLabel,
           department: addFolderDept,
           year: addFolderYear,
           color: addFolderColor,
+          parentId: selectedFolderId,
         }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
 
-      setFolders((prev) => {
-        const existingIdx = prev.findIndex((f) => f.name.toLowerCase() === addFolderLabel.toLowerCase().trim());
-        if (existingIdx >= 0) {
-          const copy = [...prev];
-          copy[existingIdx] = json.data;
-          return copy;
-        }
-        return [...prev, json.data];
-      });
+      // Re-fetch current directory folders
+      const foldersUrl = `/api/folders?parentId=${selectedFolderId || "null"}`;
+      const foldersRes = await fetch(foldersUrl).then((r) => r.json());
+      if (foldersRes.success) setFolders(foldersRes.data);
 
       setAddFolderSuccess(true);
       setTimeout(() => {
@@ -357,8 +463,8 @@ export default function NotesDashboard() {
         setAddFolderYear("2nd Year");
         setAddFolderColor("blue");
       }, 1500);
-    } catch (err) {
-      console.error("Failed to add folder:", err);
+    } catch (err: any) {
+      alert(err.message || "Failed to add folder");
     } finally {
       setAddFolderLoading(false);
     }
@@ -366,6 +472,7 @@ export default function NotesDashboard() {
 
   const openFolder = (folder: DocFolder) => {
     setSelectedFolder(folder.name);
+    setSelectedFolderId(folder.id);
     setActiveTab("files");
     setOpenFolderMenuId(null);
     router.replace(`${pathname}?folder=${encodeURIComponent(folder.id)}`);
@@ -374,6 +481,7 @@ export default function NotesDashboard() {
   const clearFolderSelection = () => {
     setSelectedFolder(null);
     setOpenFolderMenuId(null);
+    setSelectedFolderId(null);
     router.replace(pathname);
   };
 
@@ -403,9 +511,13 @@ export default function NotesDashboard() {
 
     setRenameFolderLoading(true);
     try {
+      const headers = {
+        "Content-Type": "application/json",
+        ...(await getAuthHeaders()),
+      };
       const response = await fetch("/api/folders", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ id: renameFolderId, name: renameFolderName.trim() }),
       });
 
@@ -417,21 +529,25 @@ export default function NotesDashboard() {
       setIsRenameFolderOpen(false);
       setRenameFolderId(null);
       setRenameFolderName("");
-    } catch (err) {
-      console.error("Failed to rename folder:", err);
+    } catch (err: any) {
+      alert(err.message || "Failed to rename folder");
     } finally {
       setRenameFolderLoading(false);
     }
   };
 
   const handleDeleteFolder = async (folder: DocFolder) => {
-    const confirmed = window.confirm(`Delete ${folder.name}? This cannot be undone.`);
+    const confirmed = window.confirm(`Delete ${folder.name}? This will delete all subfolders and notes recursively. This cannot be undone.`);
     if (!confirmed) return;
 
     try {
+      const headers = {
+        "Content-Type": "application/json",
+        ...(await getAuthHeaders()),
+      };
       const response = await fetch("/api/folders", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ id: folder.id }),
       });
 
@@ -439,25 +555,143 @@ export default function NotesDashboard() {
       if (!json.success) throw new Error(json.error);
 
       setFolders((prev) => prev.filter((item) => item.id !== folder.id));
-      if (selectedFolder === folder.name) {
+      if (selectedFolderId === folder.id) {
         clearFolderSelection();
       }
       setOpenFolderMenuId(null);
-    } catch (err) {
-      console.error("Failed to delete folder:", err);
+    } catch (err: any) {
+      alert(err.message || "Failed to delete folder");
     }
   };
 
+  const handleDeleteFile = async (file: DocFile) => {
+    const confirmed = window.confirm(`Delete note "${file.title}"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      const headers = {
+        "Content-Type": "application/json",
+        ...(await getAuthHeaders()),
+      };
+      const response = await fetch("/api/files", {
+        method: "DELETE",
+        headers,
+        body: JSON.stringify({ id: file.id }),
+      });
+
+      const json = await response.json();
+      if (!json.success) throw new Error(json.error);
+
+      setFiles((prev) => prev.filter((item) => item.id !== file.id));
+      if (file.folderId) {
+        setFolders((prev) =>
+          prev.map((f) =>
+            f.id === file.folderId ? { ...f, filesCount: Math.max(0, f.filesCount - 1) } : f
+          )
+        );
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to delete note");
+    }
+  };
+
+  const handleMoveFolderSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!moveFolderId) return;
+
+    try {
+      const headers = {
+        "Content-Type": "application/json",
+        ...(await getAuthHeaders()),
+      };
+      const response = await fetch("/api/folders", {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          id: moveFolderId,
+          parentId: moveFolderTargetId === "root" ? null : moveFolderTargetId,
+        }),
+      });
+
+      const json = await response.json();
+      if (!json.success) throw new Error(json.error);
+
+      // Refresh current directory
+      if (selectedFolderId === moveFolderId) {
+        clearFolderSelection();
+      } else {
+        const foldersUrl = `/api/folders?parentId=${selectedFolderId || "null"}`;
+        const foldersRes = await fetch(foldersUrl).then((r) => r.json());
+        if (foldersRes.success) setFolders(foldersRes.data);
+      }
+      setIsMoveFolderOpen(false);
+      setMoveFolderId(null);
+      setMoveFolderTargetId(null);
+    } catch (err: any) {
+      alert(err.message || "Failed to move folder");
+    }
+  };
+
+  const handleMoveFileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!moveFileId) return;
+
+    try {
+      const headers = {
+        "Content-Type": "application/json",
+        ...(await getAuthHeaders()),
+      };
+      const response = await fetch("/api/files", {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          id: moveFileId,
+          folderId: moveFileTargetId === "root" ? null : moveFileTargetId,
+        }),
+      });
+
+      const json = await response.json();
+      if (!json.success) throw new Error(json.error);
+
+      setFiles((prev) => prev.filter((item) => item.id !== moveFileId));
+      
+      const movedFile = files.find(f => f.id === moveFileId);
+      if (movedFile) {
+        const oldFolderId = movedFile.folderId;
+        const newFolderId = moveFileTargetId === "root" ? null : moveFileTargetId;
+        
+        setFolders((prev) =>
+          prev.map((f) => {
+            if (f.id === oldFolderId) {
+              return { ...f, filesCount: Math.max(0, f.filesCount - 1) };
+            }
+            if (f.id === newFolderId) {
+              return { ...f, filesCount: f.filesCount + 1 };
+            }
+            return f;
+          })
+        );
+      }
+
+      setIsMoveFileOpen(false);
+      setMoveFileId(null);
+      setMoveFileTargetId(null);
+    } catch (err: any) {
+      alert(err.message || "Failed to move file");
+    }
+  };
+
+  // Sync URL query params with state
   useEffect(() => {
     const folderParam = searchParams.get("folder");
-    if (!folderParam || folders.length === 0) return;
-
-    const matchedFolder = folders.find((folder) => folder.id === folderParam || folder.name === folderParam);
-    if (matchedFolder) {
-      setSelectedFolder(matchedFolder.name);
+    if (folderParam) {
+      setSelectedFolderId(folderParam);
       setActiveTab("files");
+    } else {
+      setSelectedFolderId(null);
+      setSelectedFolder(null);
     }
-  }, [folders, searchParams]);
+  }, [searchParams]);
 
   useEffect(() => {
     const closeMenu = (event: PointerEvent) => {
@@ -471,7 +705,7 @@ export default function NotesDashboard() {
     return () => document.removeEventListener("pointerdown", closeMenu);
   }, []);
 
-  // Fetch all semesters, courses, folders, and files from DB on mount
+  // Fetch all semesters and courses on mount
   useEffect(() => {
     fetch("/api/semesters")
       .then((r) => r.json())
@@ -481,15 +715,14 @@ export default function NotesDashboard() {
       .then((r) => r.json())
       .then((json) => { if (json.success) setDbCourses(json.data); })
       .catch(() => {});
-    fetch("/api/folders")
-      .then((r) => r.json())
-      .then((json) => { if (json.success) setFolders(json.data); })
-      .catch(() => {});
-    fetch("/api/files")
-      .then((r) => r.json())
-      .then((json) => { if (json.success) setFiles(json.data); })
-      .catch(() => {});
   }, []);
+
+  // Fetch flat folders list when modals open
+  useEffect(() => {
+    if (isContributeOpen || isMoveFolderOpen || isMoveFileOpen) {
+      fetchAllFolders();
+    }
+  }, [isContributeOpen, isMoveFolderOpen, isMoveFileOpen]);
 
   // Courses to show: from DB if found, else fallback static
   // Source: University of Dhaka — B.Sc. in CSE Syllabus (Session 2019-20)
@@ -739,9 +972,22 @@ export default function NotesDashboard() {
     const fileSize = `${(Math.random() * 5 + 1).toFixed(1)} MB`;
 
     try {
+      const headers = {
+        "Content-Type": "application/json",
+        ...(await getAuthHeaders()),
+      };
+
+      const matchedFolder = allFoldersList.find(
+        (f) =>
+          f.name.toLowerCase() === newFileSubject.trim().toLowerCase() &&
+          f.department === newFileDept &&
+          f.year === newFileYear
+      );
+      const targetFolderId = matchedFolder ? matchedFolder.id : (selectedFolderId || null);
+
       const res = await fetch("/api/files", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           title: newFileTitle,
           subject: newFileSubject,
@@ -754,15 +1000,16 @@ export default function NotesDashboard() {
           driveId: extractedId,
           color: targetColor,
           size: fileSize,
+          folderId: targetFolderId,
         }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
 
-      // Re-fetch folders & files to sync up local state with DB
+      // Re-fetch current directory folders and files
       const [foldersRes, filesRes] = await Promise.all([
-        fetch("/api/folders").then((r) => r.json()),
-        fetch("/api/files").then((r) => r.json()),
+        fetch(`/api/folders?parentId=${selectedFolderId || "null"}`).then((r) => r.json()),
+        fetch(`/api/files?folderId=${selectedFolderId || "null"}`).then((r) => r.json()),
       ]);
       if (foldersRes.success) setFolders(foldersRes.data);
       if (filesRes.success) setFiles(filesRes.data);
@@ -787,17 +1034,13 @@ export default function NotesDashboard() {
       const matchCourse = selectedCourse === "All" || folder.name === selectedCourse;
       const matchYear = selectedYear === "All" || folder.year === selectedYear;
 
-      const matchActiveCourse = !activeCourseFilter ||
-        folder.name.toLowerCase().includes(activeCourseFilter.title.toLowerCase()) ||
-        folder.name.toLowerCase().includes(activeCourseFilter.code.toLowerCase()) ||
-        folder.name.toLowerCase().replace(/[\s-]/g, "").includes(activeCourseFilter.code.toLowerCase().replace(/[\s-]/g, "")) ||
-        activeCourseFilter.code.toLowerCase().replace(/[\s-]/g, "").includes(folder.name.toLowerCase().replace(/[\s-]/g, "")) ||
-        folder.name.toLowerCase().replace(/[\s-]/g, "").includes(activeCourseFilter.title.toLowerCase().replace(/[\s-]/g, "")) ||
-        activeCourseFilter.title.toLowerCase().replace(/[\s-]/g, "").includes(folder.name.toLowerCase().replace(/[\s-]/g, ""));
+      // When inside a subfolder (selectedFolderId is set), show ALL subfolders
+      // without course filter — the user is already navigating a specific folder tree
+      if (selectedFolderId) return matchCourse && matchYear;
 
-      return matchCourse && matchYear && matchActiveCourse;
+      return matchCourse && matchYear;
     });
-  }, [folders, selectedCourse, selectedYear, activeCourseFilter]);
+  }, [folders, selectedCourse, selectedYear, selectedFolderId]);
 
   const filteredFiles = useMemo(() => {
     let result = files.filter((file) => {
@@ -809,6 +1052,9 @@ export default function NotesDashboard() {
         file.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         file.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
         file.uploadedBy.toLowerCase().includes(searchQuery.toLowerCase());
+
+      // When inside a subfolder, show all files without course filter
+      if (selectedFolderId) return matchCourse && matchYear && matchType && matchFolder && matchSearch;
 
       // If filtering by a specific course from the Courses tab,
       // match files where subject contains the course title or course code
@@ -849,7 +1095,7 @@ export default function NotesDashboard() {
     });
 
     return result;
-  }, [files, selectedCourse, selectedYear, selectedType, selectedFolder, searchQuery, activeCourseFilter, sortBy]);
+  }, [files, selectedCourse, selectedYear, selectedType, selectedFolder, searchQuery, activeCourseFilter, sortBy, selectedFolderId]);
 
   const openCourseFiles = (course: SemesterCourse) => {
     setActiveCourseFilter({ code: course.code, title: course.title });
@@ -1427,6 +1673,20 @@ export default function NotesDashboard() {
                                     type="button"
                                     onClick={(event) => {
                                       event.stopPropagation();
+                                      setMoveFolderId(folder.id);
+                                      setMoveFolderTargetId(folder.parentId || "root");
+                                      setIsMoveFolderOpen(true);
+                                      setOpenFolderMenuId(null);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-900"
+                                  >
+                                    <Layers className="h-3.5 w-3.5 text-accent" />
+                                    Move
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
                                       void handleDeleteFolder(folder);
                                     }}
                                     className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
@@ -1460,29 +1720,20 @@ export default function NotesDashboard() {
                 {/* Section Title & Header */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border pb-6">
                   <div>
-                    <h1 className="font-serif text-3xl font-extrabold text-primary dark:text-teal-100 flex items-center gap-2">
-                        {activeTab === "files" && !selectedFolder && !activeCourseFilter && (
-                          <button
-                            type="button"
-                            onClick={goBackFromSection}
-                            className="mr-1 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-white text-accent shadow-sm transition-colors hover:bg-slate-50 dark:bg-[#0b1d1a] dark:hover:bg-slate-900"
-                            aria-label="Back to previous section"
-                            title="Back to previous section"
-                          >
-                            <ArrowLeft className="h-4 w-4" />
-                          </button>
-                        )}
-                      {selectedFolder ? (
-                        <>
-                          <button
-                            onClick={clearFolderSelection}
-                            className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 mr-1"
-                          >
-                            <ArrowLeft className="w-5 h-5 text-accent" />
-                          </button>
-                          {selectedFolder} Files
-                        </>
-                      ) : activeCourseFilter ? (
+                    <h1 className="font-serif text-2xl font-extrabold text-primary dark:text-teal-100 flex items-center flex-wrap gap-1.5 leading-tight">
+                      {activeTab === "files" && !selectedFolderId && !activeCourseFilter && (
+                        <button
+                          type="button"
+                          onClick={goBackFromSection}
+                          className="mr-1 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-white text-accent shadow-sm transition-colors hover:bg-slate-50 dark:bg-[#0b1d1a] dark:hover:bg-slate-900"
+                          aria-label="Back to previous section"
+                          title="Back to previous section"
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                        </button>
+                      )}
+
+                      {activeCourseFilter ? (
                         <>
                           <button
                             onClick={() => { setActiveCourseFilter(null); setActiveTab("courses"); }}
@@ -1494,12 +1745,36 @@ export default function NotesDashboard() {
                           {activeCourseFilter.title}
                         </>
                       ) : (
-                        "Academic Files"
+                        <>
+                          <button
+                            onClick={clearFolderSelection}
+                            className="hover:text-accent hover:underline cursor-pointer"
+                          >
+                            Home
+                          </button>
+                          {breadcrumbs.map((crumb, idx) => (
+                            <div key={crumb.id} className="flex items-center gap-1.5">
+                              <span className="text-muted-foreground/60 text-sm">/</span>
+                              <button
+                                onClick={() => {
+                                  setSelectedFolder(crumb.name);
+                                  setSelectedFolderId(crumb.id);
+                                  router.replace(`${pathname}?folder=${encodeURIComponent(crumb.id)}`);
+                                }}
+                                className={`hover:text-accent hover:underline cursor-pointer ${
+                                  idx === breadcrumbs.length - 1 ? "text-accent font-bold" : ""
+                                }`}
+                              >
+                                {crumb.name}
+                              </button>
+                            </div>
+                          ))}
+                        </>
                       )}
                     </h1>
                     <p className="text-xs text-muted-foreground font-semibold mt-1">
-                      {selectedFolder
-                        ? `Displaying files matching ${selectedFolder} subject directory`
+                      {selectedFolderId
+                        ? `Displaying files inside ${selectedFolder || ""} subject directory`
                         : activeCourseFilter
                         ? `Showing files for ${activeCourseFilter.code} — ${activeCourseFilter.title} · sorted by name`
                         : "Filter & search through engineering lecture notes & question papers"}
@@ -1510,7 +1785,17 @@ export default function NotesDashboard() {
                   <div className="flex items-center gap-3">
                     {currentUser && (
                       <Button
-                        onClick={() => setIsAddFolderOpen(true)}
+                        onClick={() => {
+                          // Prefill the Year selector when opening the Add Folder modal
+                          if (selectedSemester) {
+                            setAddFolderYear(
+                              selectedSemester.startsWith("1st") ? "1st Year" :
+                              selectedSemester.startsWith("2nd") ? "2nd Year" :
+                              selectedSemester.startsWith("3rd") ? "3rd Year" : "4th Year"
+                            );
+                          }
+                          setIsAddFolderOpen(true);
+                        }}
                         className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-md hover:-translate-y-0.5 transition-all gap-2 cursor-pointer border border-accent/20 h-10 px-4 text-xs rounded-xl flex items-center justify-center"
                       >
                         <Folder className="w-4 h-4 text-amber-500" />
@@ -1622,112 +1907,139 @@ export default function NotesDashboard() {
                   </div>
                 </div>
 
-                {/* --- FOLDER SECTION (Render only when not inside a folder) --- */}
-                {!selectedFolder && (
+                {/* --- FOLDER SECTION --- */}
+                {(!selectedFolderId || filteredFolders.length > 0) && (
                   <div className="flex flex-col gap-4">
                     <h3 className="font-serif font-bold text-sm text-primary dark:text-teal-200 tracking-wide uppercase border-b border-border pb-2">
-                      Folders
+                      {selectedFolderId ? "Subfolders" : "Folders"}
                     </h3>
                     
                     {filteredFolders.length === 0 ? (
-                      <div className="text-center p-8 bg-white rounded-2xl border border-dashed border-border">
+                      <div className="text-center p-8 bg-white rounded-2xl border border-dashed border-border dark:bg-[#0b1d1a]">
+                        <Folder className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
                         <span className="text-xs text-muted-foreground">No folders match the selected filters.</span>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                        {filteredFolders.map((folder) => {
-                          const badgeColor = getBadgeStyles(folder.color);
-                          return (
-                            <motion.div
-                              whileHover={{ y: -3 }}
-                              onClick={() => openFolder(folder)}
-                              key={folder.id}
-                              className="bg-amber-50/60 dark:bg-[#0c2420] border border-amber-250/30 p-5 rounded-2xl shadow-sm hover:shadow-md cursor-pointer transition-all flex flex-col justify-between h-[130px] group relative overflow-hidden"
-                            >
-                              <div
-                                data-folder-menu="true"
-                                ref={openFolderMenuId === folder.id ? openFolderMenuRef : null}
-                                className="absolute right-3 top-3 z-20"
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setOpenFolderMenuId((current) => (current === folder.id ? null : folder.id));
-                                  }}
-                                  className="rounded-full border border-border/70 bg-white/90 p-2 text-muted-foreground shadow-sm opacity-0 transition-opacity hover:text-primary group-hover:opacity-100 dark:bg-[#0b1d1a]/90"
-                                  aria-label={`Open actions for ${folder.name}`}
-                                  title="Folder actions"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </button>
+                        {filteredFolders.map((folder) => (
+                          <motion.div
+                            whileHover={{ y: -3 }}
+                            key={folder.id}
+                            onClick={() => {
+                              openFolder(folder);
+                              setSelectedCourse("All");
+                              setSelectedType("All");
+                              setActiveCourseFilter(null);
+                              setSearchQuery("");
+                            }}
+                            className="bg-white dark:bg-[#0c201d] border border-border/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-[180px] relative overflow-hidden cursor-pointer group"
+                          >
+                            {/* Color tab indicator */}
+                            <div className={`absolute top-0 left-0 right-0 h-1.5 ${
+                              folder.color === "blue" ? "bg-blue-500" :
+                              folder.color === "yellow" ? "bg-amber-500" :
+                              folder.color === "red" ? "bg-rose-500" :
+                              folder.color === "green" ? "bg-emerald-500" : "bg-slate-400"
+                            }`} />
 
-                                <AnimatePresence>
-                                  {openFolderMenuId === folder.id && (
-                                    <motion.div
-                                      initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                                      transition={{ duration: 0.15 }}
-                                      className="absolute right-0 top-11 w-44 rounded-2xl border border-border bg-white p-2 shadow-xl dark:bg-[#0b1d1a] z-30"
-                                    >
-                                      <button
-                                        type="button"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          beginRenameFolder(folder);
-                                        }}
-                                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-900"
-                                      >
-                                        <Pencil className="h-3.5 w-3.5 text-accent" />
-                                        Rename
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          void handleShareFolder(folder);
-                                        }}
-                                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-900"
-                                      >
-                                        <Share2 className="h-3.5 w-3.5 text-accent" />
-                                        Share link
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          void handleDeleteFolder(folder);
-                                        }}
-                                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                        Delete
-                                      </button>
-                                    </motion.div>
-                                  )}
-                                </AnimatePresence>
-                              </div>
-                              <div className="flex justify-between items-start">
-                                {/* Folder Tab Graphic design styling */}
-                                <div className="absolute top-0 left-5 w-12 h-2 bg-amber-500 rounded-b-md" />
-                                <Folder className="w-8 h-8 text-amber-500" />
-                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${badgeColor}`}>
-                                  {folder.department}
+                            <div className="flex flex-col gap-2 mt-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`text-[8px] tracking-wider font-bold uppercase px-2 py-0.5 rounded-full border ${getBadgeStyles(folder.color)}`}>
+                                  {folder.department} • {folder.year}
                                 </span>
+                                {/* Folder actions dropdown */}
+                                <div className="relative" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenFolderMenuId((curr) => (curr === folder.id ? null : folder.id));
+                                    }}
+                                    className="text-muted-foreground hover:text-primary transition-colors p-0.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                                    title="Folder actions"
+                                  >
+                                    <MoreVertical className="h-3.5 w-3.5" />
+                                  </button>
+
+                                  <AnimatePresence>
+                                    {openFolderMenuId === folder.id && (
+                                      <motion.div
+                                        ref={openFolderMenuRef}
+                                        initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                                        transition={{ duration: 0.15 }}
+                                        className="absolute right-0 top-6 w-40 rounded-xl border border-border bg-white p-1 shadow-xl dark:bg-[#0b1d1a] z-30"
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            beginRenameFolder(folder);
+                                          }}
+                                          className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[11px] font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer"
+                                        >
+                                          <Pencil className="h-3 w-3 text-accent" />
+                                          Rename
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            void handleShareFolder(folder);
+                                          }}
+                                          className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[11px] font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer"
+                                        >
+                                          <Share2 className="h-3 w-3 text-accent" />
+                                          Share link
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setMoveFolderId(folder.id);
+                                            setMoveFolderTargetId(folder.parentId || "root");
+                                            setIsMoveFolderOpen(true);
+                                            setOpenFolderMenuId(null);
+                                          }}
+                                          className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[11px] font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer"
+                                        >
+                                          <Layers className="h-3 w-3 text-accent" />
+                                          Move
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            void handleDeleteFolder(folder);
+                                          }}
+                                          className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[11px] font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                          Delete
+                                        </button>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
                               </div>
-                              <div>
-                                <h4 className="font-serif text-sm font-bold text-primary dark:text-teal-150 truncate leading-snug group-hover:text-accent transition-colors">
-                                  {folder.name}
-                                </h4>
-                                <span className="text-[10px] text-muted-foreground font-semibold mt-1 block">
-                                  {folder.filesCount} Files • {folder.year}
-                                </span>
+                              <h4 className="font-serif text-sm font-extrabold text-primary dark:text-teal-150 leading-snug line-clamp-2 group-hover:text-accent transition-colors">
+                                {folder.name}
+                              </h4>
+                              <span className="text-[10px] text-muted-foreground font-semibold">
+                                {folder.filesCount} {folder.filesCount === 1 ? "file" : "files"}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between border-t border-border/50 pt-3 mt-3">
+                              <div className="flex items-center gap-1.5 text-accent">
+                                <Folder className="w-3.5 h-3.5" />
+                                <span className="text-[10px] font-bold">Open Folder</span>
                               </div>
-                            </motion.div>
-                          );
-                        })}
+                              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-accent transition-colors" />
+                            </div>
+                          </motion.div>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -1765,7 +2077,7 @@ export default function NotesDashboard() {
                           <motion.div
                             whileHover={{ y: -3 }}
                             key={file.id}
-                            className="bg-white dark:bg-[#0c201d] border border-border/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-[180px] relative overflow-hidden"
+                            className="bg-white dark:bg-[#0c201d] border border-border/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-[180px] relative overflow-hidden group"
                           >
                             {/* Color tab indicator */}
                             <div className={`absolute top-0 left-0 right-0 h-1.5 ${
@@ -1780,9 +2092,58 @@ export default function NotesDashboard() {
                                 <span className={`text-[8px] tracking-wider font-bold uppercase px-2 py-0.5 rounded-full border ${badgeColor}`}>
                                   {file.department} • {file.type}
                                 </span>
-                                <span className="text-[9px] text-muted-foreground font-bold font-mono">
-                                  {file.size}
-                                </span>
+                                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                  <span className="text-[9px] text-muted-foreground font-bold font-mono">
+                                    {file.size}
+                                  </span>
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      onClick={() => setOpenFolderMenuId((curr) => (curr === `file-card-${file.id}` ? null : `file-card-${file.id}`))}
+                                      className="text-muted-foreground hover:text-primary transition-colors p-0.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                                      title="File actions"
+                                    >
+                                      <MoreVertical className="h-3.5 w-3.5" />
+                                    </button>
+
+                                    <AnimatePresence>
+                                      {openFolderMenuId === `file-card-${file.id}` && (
+                                        <motion.div
+                                          initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                                          exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                                          transition={{ duration: 0.15 }}
+                                          className="absolute right-0 top-6 w-32 rounded-xl border border-border bg-white p-1 shadow-xl dark:bg-[#0b1d1a] z-30"
+                                        >
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setMoveFileId(file.id);
+                                              setMoveFileTargetId(file.folderId || "root");
+                                              setIsMoveFileOpen(true);
+                                              setOpenFolderMenuId(null);
+                                            }}
+                                            className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[11px] font-semibold text-primary hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer"
+                                          >
+                                            <Layers className="h-3 w-3 text-accent" />
+                                            Move Note
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              void handleDeleteFile(file);
+                                              setOpenFolderMenuId(null);
+                                            }}
+                                            className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[11px] font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                            Delete
+                                          </button>
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
+                                  </div>
+                                </div>
                               </div>
                               <h4 className="font-serif text-sm font-extrabold text-primary dark:text-teal-150 leading-snug line-clamp-2">
                                 {file.title}
@@ -2832,6 +3193,133 @@ export default function NotesDashboard() {
         </DialogContent>
       </Dialog>
 
+      {/* ─── Move Folder Dialog ─────────────────────────────────────── */}
+      <Dialog open={isMoveFolderOpen} onOpenChange={(open) => {
+        setIsMoveFolderOpen(open);
+        if (!open) {
+          setMoveFolderId(null);
+          setMoveFolderTargetId(null);
+        }
+      }}>
+        <DialogContent className="max-w-md bg-white dark:bg-[#0b1d1a] border border-border p-6 rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl font-bold text-primary dark:text-teal-100">
+              Move Folder
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Select a destination folder. Moving a folder into its own descendant is not allowed.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleMoveFolderSubmit} className="flex flex-col gap-4 mt-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Destination</label>
+              <select
+                value={moveFolderTargetId || "root"}
+                onChange={(e) => setMoveFolderTargetId(e.target.value === "root" ? null : e.target.value)}
+                className="bg-slate-50 dark:bg-slate-900 border border-border rounded-xl p-2.5 font-semibold text-xs text-primary dark:text-teal-200 cursor-pointer h-10"
+              >
+                <option value="root">Root (no parent)</option>
+                {allFoldersList
+                  .filter((f) => f.id !== moveFolderId)
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name} ({f.department} · {f.year})
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <DialogFooter className="mt-2 pt-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsMoveFolderOpen(false)}
+                className="border-border text-xs rounded-xl h-10"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold text-xs rounded-xl h-10 min-w-[120px]"
+              >
+                Move Folder
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Move File Dialog ─────────────────────────────────────── */}
+      <Dialog open={isMoveFileOpen} onOpenChange={(open) => {
+        setIsMoveFileOpen(open);
+        if (!open) {
+          setMoveFileId(null);
+          setMoveFileTargetId(null);
+        }
+      }}>
+        <DialogContent className="max-w-md bg-white dark:bg-[#0b1d1a] border border-border p-6 rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl font-bold text-primary dark:text-teal-100">
+              Move Note
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Select a destination folder for this note.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleMoveFileSubmit} className="flex flex-col gap-4 mt-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Destination Folder</label>
+              <select
+                value={moveFileTargetId || "root"}
+                onChange={(e) => setMoveFileTargetId(e.target.value === "root" ? null : e.target.value)}
+                className="bg-slate-50 dark:bg-slate-900 border border-border rounded-xl p-2.5 font-semibold text-xs text-primary dark:text-teal-200 cursor-pointer h-10"
+              >
+                <option value="root">Root (no folder)</option>
+                {allFoldersList.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} ({f.department} · {f.year})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <DialogFooter className="mt-2 pt-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsMoveFileOpen(false)}
+                className="border-border text-xs rounded-xl h-10"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold text-xs rounded-xl h-10 min-w-[120px]"
+              >
+                Move Note
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
     </div>
+  );
+}
+
+export default function NotesDashboard() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen w-screen items-center justify-center bg-[#f3f5f6] dark:bg-[#071412] text-foreground dark:text-teal-50">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-accent" />
+          <span className="text-sm font-semibold text-muted-foreground">Loading Notes Dashboard...</span>
+        </div>
+      </div>
+    }>
+      <NotesDashboardContent />
+    </Suspense>
   );
 }
